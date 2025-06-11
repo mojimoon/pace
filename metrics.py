@@ -2,6 +2,7 @@
 rewrite of selection_metrics.py in flavor of Keras
 '''
 
+from sklearn import preprocessing
 import tensorflow as tf
 import numpy as np
 from keras.models import Model
@@ -373,6 +374,47 @@ def dsa_select(X, y, model, budget, std=0.05):
     selected_idx = idx[:budget]
     return X[selected_idx], y[selected_idx], selected_idx
 
+def geometric_diversity_select(X, y, model, budget, batch_size=128, layer_idx=None, no_groups=50):
+    min_max_scaler = preprocessing.MinMaxScaler()
+
+    if layer_idx is not None:
+        layer = model.layers[layer_idx]
+    else:
+        layer = model.layers[-2] # typically the last dense layer before output
+    
+    hidden_size = layer.output_shape[-1]
+    feat = np.zeros((1, hidden_size))
+    for x_batch, y_batch in make_batch(X, y, batch_size):
+        _feat = layer.predict(x_batch)
+        feat = np.vstack((feat, _feat))
+    feat_mat = feat[1:]
+    GD_scores, selected_indices = [], []
+    for _ in range(no_groups):
+        select_idx = np.random.choice(np.arange(len(feat_mat)), budget)
+        selected_indices.append(select_idx)
+        select_group = feat_mat[select_idx] #shape (bg*len, feat)
+        # normalize group
+        normalize_select_group = min_max_scaler.fit_transform(select_group)
+        # compute GD
+        GD = np.linalg.det(np.matmul(normalize_select_group, normalize_select_group.T))
+        GD_scores.append(GD.squeeze())
+
+        max_idx = np.argmax(np.array(GD_scores))
+        chosen_indices = selected_indices[max_idx]
+    
+    return X[chosen_indices], y[chosen_indices], chosen_indices
+
+def std_select(X, y, model, budget, batch_size=128):
+    scores = []
+    for x_batch, y_batch in make_batch(X, y, batch_size):
+        proba = model.predict(x_batch)
+        std_score = np.std(proba, axis=1)
+        scores.append(std_score)
+    scores = np.concatenate(scores)
+    idx = np.argsort(scores)[::-1]  # Largest std first
+    selected_idx = idx[:budget]
+    return X[selected_idx], y[selected_idx], selected_idx
+
 def select(X, y, model, budget, metric, batch_size=128, **kwargs):
     if metric == 'rnd':
         return random_select(X, y, budget)
@@ -388,5 +430,9 @@ def select(X, y, model, budget, metric, batch_size=128, **kwargs):
         return lsa_select(X, y, model, budget, std=kwargs.get('std', 0.05))
     elif metric == 'dsa':
         return dsa_select(X, y, model, budget, std=kwargs.get('std', 0.05))
+    elif metric == 'gd':
+        return geometric_diversity_select(X, y, model, budget, batch_size, layer_idx=kwargs.get('layer_idx'), no_groups=kwargs.get('no_groups', 50))
+    elif metric == 'std':
+        return std_select(X, y, model, budget, batch_size)
     else:
         raise NotImplementedError(f"Metric '{metric}' is not implemented.")

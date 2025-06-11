@@ -563,7 +563,7 @@ def GD(sess, candidateX, candidatey, model, selection_size, number=60, batch_siz
 
         max_idx = np.argmax(np.array(GD_scores))
         chosen_indices = selected_indices[max_idx]
-        selected_candidateX, selected_candidatey = candidateX[chosen_indices], candidatey[chosen_indices]
+    selected_candidateX, selected_candidatey = candidateX[chosen_indices], candidatey[chosen_indices]
 
     return selected_candidateX, selected_candidatey
 
