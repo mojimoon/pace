@@ -15,6 +15,7 @@ test_dir = 'test/mnist' # test/mnist/{test_set}/{model_name}/{selection_metric}/
 
 metrics = ['rnd', 'ent', 'gini', 'dat', 'gd', 'kmnc', 'nac', 'lsa', 'dsa', 'nc', 'std', 'pace', 'dr', 'ces', 'mcp', 'est']
 budgets = [50, 100, 150, 200]
+# budgets = [0.05, 0.1, 0.15, 0.2]
 
 def run_selection(model_name, test_set, testX, testy, metrics, budgets):
     model = s.get_model(model_name)

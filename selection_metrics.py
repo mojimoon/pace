@@ -55,7 +55,8 @@ def make_batch(X, y, batch_size):
         yield X[start:end], y[start:end]
 
 def Random(candidateX, candidatey,budget):
-    selection_size = int(budget * candidateX.shape[0])
+    # selection_size = int(budget * candidateX.shape[0])
+    selection_size = budget
     select_idx = np.random.choice(np.arange(len(candidateX)), selection_size)
     selected_candidateX, selected_candidatey = candidateX[select_idx], candidatey[select_idx]
 
@@ -77,7 +78,8 @@ def entropy(sess, X, Y, model, budget, batch_size=128):
 
     scores = np.array(entropies[1:]).flatten()
     idx = np.argsort(scores)[::-1]  # Largest entropy first
-    selected_idx = idx[:int(len(idx) * budget)]
+    # selected_idx = idx[:int(len(idx) * budget)]
+    selected_idx = idx[:budget]
     selectedX = X[selected_idx]
     selectedy = Y[selected_idx]
     return selectedX, selectedy, scores
@@ -103,13 +105,15 @@ def deepgini(sess, candidateX, candidatey, model, budget, batch_size=128):
 
     scores = np.array(score[1:]).flatten()
     idx = np.argsort(scores)[::-1]
-    selected_idx = idx[:int(len(idx) * budget)]
+    # selected_idx = idx[:int(len(idx) * budget)]
+    selected_idx = idx[:budget]
     selected_candidateX = candidateX[selected_idx]
     selected_candidatey = candidatey[selected_idx]
     return selected_candidateX, selected_candidatey, scores
 
 def dat(sess, candidateX, candidatey, candidateX_id, candidatey_id, hybrid_test, hybrid_testy, model, id_ratio, budget, batch_size=128):
-    select_size = budget * candidateX.shape[0]
+    # select_size = budget * candidateX.shape[0]
+    select_size = budget
     id_select_num = int(select_size * id_ratio)    #e.g., 4 out of 40
     ood_select_num = int(select_size - id_select_num)
     para_there = 0.5 # general default value as specified in the paper.
@@ -473,7 +477,8 @@ class DSA(object):
         return test_score
 
 def select_with_model(sess, candidateX, candidatey, model, budget, selection_metric, **kwargs):
-    selection_size = int(budget * candidateX.shape[0])
+    # selection_size = int(budget * candidateX.shape[0])
+    selection_size = budget
 
     if selection_metric == 'kmnc':
         k_bins = kwargs.get('k_bins', 1000)
