@@ -805,11 +805,11 @@ def deepest(sess, candidateX, candidatey, model, budget, d=0.5, batch_size=128):
         return selected_candidateX, selected_candidatey, scores
 
 def select(sess, candidateX, candidatey, model, budget, selection_metric, **kwargs):
-    if selection_metric == 'random':
+    if selection_metric == 'rnd':
         return Random(candidateX, candidatey, budget)
-    elif selection_metric == 'entropy':
+    elif selection_metric == 'ent':
         return entropy(sess, candidateX, candidatey, model, budget)
-    elif selection_metric == 'deepgini':
+    elif selection_metric == 'gini':
         return deepgini(sess, candidateX, candidatey, model, budget)
     elif selection_metric == 'dat':
         candidateX_id = kwargs.get('candidateX_id', None)
