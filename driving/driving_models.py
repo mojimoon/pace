@@ -4,15 +4,21 @@ from __future__ import print_function
 import os
 import sys
 
-from keras.layers import Convolution2D, Input, Dense, Flatten, Lambda, MaxPooling2D, Dropout
+from data_utils import load_train_data, load_test_data
 
-from driving.data_utils import load_train_data, load_test_data
+from utils import *
 
-from driving.utils import *
+from keras.models import Model, Sequential
+from keras.preprocessing import image
+from keras.layers import Dense, Flatten, Dropout, Input, BatchNormalization, Lambda
+from keras.layers import Convolution2D, MaxPooling2D, AveragePooling2D, GlobalAveragePooling2D
+from keras.layers.advanced_activations import ELU
+from keras.optimizers import Adam
+from keras import backend as K
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
-def Dave_orig(input_tensor=None, load_weights=False):  # original dave
+def Dave_orig(input_tensor=None, load_weights=False):  # original dave, dave2v1
     if input_tensor is None:
         input_tensor = Input(shape=(100, 100, 3))
     x = Convolution2D(24, (5, 5), padding='valid', activation='relu', strides=(2, 2), name='block1_conv1')(input_tensor)
@@ -38,7 +44,7 @@ def Dave_orig(input_tensor=None, load_weights=False):  # original dave
     return m
 
 
-def Dave_norminit(input_tensor=None, load_weights=False):  # original dave with normal initialization
+def Dave_norminit(input_tensor=None, load_weights=False):  # original dave with normal initialization, dave2v2
     if input_tensor is None:
         input_tensor = Input(shape=(100, 100, 3))
     x = Convolution2D(24, (5, 5), padding='valid', activation='relu', strides=(2, 2),
@@ -69,7 +75,7 @@ def Dave_norminit(input_tensor=None, load_weights=False):  # original dave with 
     return m
 
 
-def Dave_dropout(input_tensor=None, load_weights=False):  # simplified dave
+def Dave_dropout(input_tensor=None, load_weights=False):  # simplified dave, dave2v3
     if input_tensor is None:
         input_tensor = Input(shape=(100, 100, 3))
     x = Convolution2D(16, (3, 3), padding='valid', activation='relu', name='block1_conv1')(input_tensor)
@@ -96,5 +102,6 @@ def Dave_dropout(input_tensor=None, load_weights=False):  # simplified dave
     m.compile(loss='mse', optimizer='adadelta')
     print("model compiled!")
     return m
+
 
 

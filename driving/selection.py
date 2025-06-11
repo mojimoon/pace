@@ -1,22 +1,24 @@
-import hdbscan
-from driving.mmd_critic.run_digits_new import run
-import openpyxl
+import math
 import os
 import argparse
 from numpy import arange
 import random
-import math
-from driving.driving_models import *
+from driving_models import *
+from epoch.epoch_model import *
 import numpy as np
-from driving.utils import *
+from utils import *
 import datetime
+from data_utils import *
+'''
+env: pace
+usage: python selection.py --exp_id=udacity_dave
+'''
 
-
-def get_score(x_test, y_test, model):
-    pred = model.predict(x_test).reshape(-1)
-    true_acc = np.sum(np.square(pred - y_test)) / x_test.shape[0]
-    print('Test accuracy:', true_acc)
-    return true_acc
+def get_score(test_generator, test_samples, batch_size, model):
+    results = model.evaluate_generator(test_generator,
+                                       steps=math.ceil(test_samples * 1. / batch_size))
+    print('mse loss for testing data', results)
+    return results
 
 
 def get_ds(countlist,res_get_s, sample_size,X_test,Y_test, X_test2, Y_test2, res,ds, my_model,acc):
@@ -150,10 +152,104 @@ def get_std1_random(X_test, Y_test, a_unoise, countlist,res,label_noise, first_n
     print(dss)
     return dss
 
+basedir = os.path.abspath(os.path.dirname(__file__))
+shape = [100,100]
+batch_size = 128
+def get_udacity_C(**kwargs):
+    xs = []
+    ys = []
+
+    with open(basedir + '/data' + '/Udacity_C_clean_labeled.txt', 'r') as f:
+        for i, line in enumerate(f):
+            xs.append(line.split(',')[0])
+            ys.append(float(line.split(',')[1]))
+    # shuffle list of images
+    c = list(zip(xs, ys))
+    random.shuffle(c)
+    xs, ys = zip(*c)
+
+    train_xs = xs
+    train_ys = ys
+
+    train_generator = data_generator(train_xs, train_ys,
+                                     target_size=(shape[0], shape[1]),
+                                     batch_size=batch_size)
+
+    return train_generator, len(train_xs)
+
+def get_udacity_label(**kwargs):
+    xs = []
+    ys = []
+
+    with open(basedir + '/data' + '/udacity_label_shifted.txt', 'r') as f:
+        for i, line in enumerate(f):
+            if i == 0:
+                continue
+            xs.append(basedir + '/testing' + '/center/' + line.split(',')[0] + '.jpg')
+            ys.append(float(line.split(',')[1]))
+    # shuffle list of images
+    c = list(zip(xs, ys))
+    random.shuffle(c)
+    xs, ys = zip(*c)
+
+    train_xs = xs
+    train_ys = ys
+
+    train_generator = data_generator(train_xs, train_ys,
+                                     target_size=(shape[0], shape[1]),
+                                     batch_size=batch_size)
+
+    return train_generator, len(train_xs)
+
+def get_udacity_dave(**kwargs):
+    xs = []
+    ys = []
+
+    with open(basedir + '/data' + '/udacity_dave.txt', 'r') as f:
+        for i, line in enumerate(f):
+            xs.append(line.split(',')[0])
+            ys.append(float(line.split(',')[1]))
+    # shuffle list of images
+    c = list(zip(xs, ys))
+    random.shuffle(c)
+    xs, ys = zip(*c)
+
+    train_xs = xs
+    train_ys = ys
+
+    train_generator = data_generator(train_xs, train_ys,
+                                     target_size=(shape[0], shape[1]),
+                                     batch_size=batch_size)
+
+    return train_generator, len(train_xs)
+
+from tensorflow.keras.applications.imagenet_utils import preprocess_input
+def get_udacity_adv(**kwargs):
+    input_img_data = np.load(basedir + '/data/fgsm_bim_pgd_clean_udacity_eps8_image.npy')
+    input_labels = np.load(basedir + '/data/fgsm_bim_pgd_clean_udacity_eps8_label.npy')
+    # preprocess img to input to epoch model
+    input_img_data = preprocess_input(input_img_data)
+
+    train_generator = data_generator_img(input_img_data, input_labels,
+                                     batch_size=batch_size)
+    import pdb; pdb.set_trace()
+    return train_generator, len(input_labels)
+
+def get_data(exp_id):
+    exp_model_dict = {
+                      'udacity_C': get_udacity_C,
+                      'udacity_label': get_udacity_label,
+                      'udacity_adv': get_udacity_adv,
+                      'udacity_dave': get_udacity_dave,
+                      }
+
+    return exp_model_dict[exp_id](exp_id=exp_id)
 
 def load_data():
-    path = os.path.join(basedir,'testing/final_example.csv')
-    temp = np.loadtxt(path, delimiter=',', dtype=np.str, skiprows=(1))
+    #path = os.path.join(basedir,'testing/final_example.csv')
+    print('CH2_final_evaluation.csv contains gt labels. final_example.csv contains false labels.')
+    path = os.path.join(basedir, 'testing/CH2_final_evaluation.csv')
+    temp = np.loadtxt(path, delimiter=',', dtype=str, skiprows=(1))
     names = list(temp[:, 0])
     test = []
     label = []
@@ -186,8 +282,10 @@ def add_black(temp, gradients):
     return temp
 
 def get_acc(exp_id):
+    #MSE
     acc_dict = {"driving_drop":0.08176111833886715,
-                'driving_orig':0.09660315929610656,
+                'driving_orig': 0.036451386196547364, #0.09660315929610656,
+                'driving_norminit': 0.04329014473285645,
                 'black_orig':0.2582445140806614,
                 'black_drop':0.2822831075318406,
                 'light_orig':0.15019167540836337,
@@ -223,7 +321,7 @@ if __name__=="__main__":
     exp_id = console_flags.exp_id
     min_cluster_size = console_flags.min_cluster_size
     min_samples = console_flags.min_samples
-    acc = get_acc(exp_id)
+    #acc = get_acc(exp_id)
 
     # input image dimensions
     img_rows, img_cols = 100, 100
@@ -237,30 +335,24 @@ if __name__=="__main__":
         model = Dave_dropout(input_tensor=input_tensor, load_weights=True)
     elif exp_id in ['driving_orig','black_orig','light_orig']:
         model = Dave_orig(input_tensor=input_tensor, load_weights=True)
+    elif exp_id in ['driving_norminit']:
+        model = Dave_norminit(input_tensor=input_tensor, load_weights=True)
+    elif exp_id in ['udacity_C','udacity_label','udacity_adv','udacity_dave']:
+        model = build_cnn() # load epoch model
+        model.load_weights("./epoch/epoch.h5")
+        K.set_learning_phase(0)
+
     else:
         raise Exception("no such model {}".format(exp_id))
 
     print(model.summary())
     # preprocess the data set
-    test, label = load_data()
-    print("data loaded!")
+    test_generator, test_samples = get_data(exp_id)
+    print("data loaded! Num of samples:", test_samples)
 
-    X_test = test.copy()
-    Y_test = label.copy()
-    print(len(X_test))
-
-    temp = test.copy()
-    pert = 1 * np.random.normal(size=X_test.shape)
-    # for i in range(7):
-    #     temp = add_black(temp, pert)
-
-    temp = add_light(temp, pert)
-
-
-    X_test = temp.copy()
-    test = temp.copy()
-    pre_acc = get_score(X_test, Y_test, model)
-
+    mse = get_score(test_generator, test_samples, batch_size, model)
+    print('MSE is ', mse)
+    breakpoint()
     start = datetime.datetime.now()
 
     dense_layer_model = Model(inputs=model.input, outputs=model.layers[select_layer_idx].output)
@@ -279,7 +371,7 @@ if __name__=="__main__":
         from sklearn.decomposition import FastICA
         fica = FastICA(n_components=dec_dim)
         dense_output = fica.fit_transform(dense_output)
-
+    import hdbscan
     clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, min_samples=min_samples, gen_min_span_tree=True)
     r = clusterer.fit(dense_output)
     labels = r.labels_
@@ -322,7 +414,7 @@ if __name__=="__main__":
         X_test3 = np.array(X_test3)
         Y_test3 = np.array(Y_test3)
         score = get_score(X_test3, Y_test3, model)
-
+    import math
     dis = np.zeros((len(label_noise), len(label_noise)))
     for i in range(len(label_noise)):
         for j in range(len(label_noise)):
@@ -341,7 +433,7 @@ if __name__=="__main__":
     print(noise_score[first_noise])
 
     res_get_s = {}
-
+    from driving.mmd_critic.run_digits_new import run
     for key in res:
         temp_dense = []
         for l in res[key]:
@@ -351,7 +443,7 @@ if __name__=="__main__":
         mmd_res, _ = run(temp_dense, temp_label, gamma=0.026, m=min(len(temp_dense), 190), k=0, ktype=0, outfig=None,
                     critoutfig=None, testfile=os.path.join(basedir,'data/a.txt'))
         res_get_s[key] = mmd_res
-
+    import openpyxl
     workbook = openpyxl.Workbook()
     sheet = workbook.active
     for a_unoise in arange(0.5, 0.9, 0.1):

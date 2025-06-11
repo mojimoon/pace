@@ -8,13 +8,18 @@ from keras.models import Model
 import random
 from keras.datasets import mnist
 from numpy import arange
-import hdbscan
-import openpyxl
+
+from selection_metrics import *
+
 import argparse
-from mnist_cifar_imagenet_svhn.mmd_critic.run_digits_new import run
+
 from keras.applications import vgg19,resnet50
 from mnist_cifar_imagenet_svhn.tools.utils import NeuronCoverage,TopKNeuronCoverage
 
+'''
+usage: python -u -m mnist_cifar_imagenet_svhn.selection --exp_id=lenet1 
+env: pace
+'''
 threshold = 0
 
 def get_score(x_test, y_test, model):
@@ -69,7 +74,6 @@ def get_ds(countlist,res_get_s, sample_size,X_test,Y_test, X_test2, Y_test2, res
     # coverage1 = TopKNeuronCoverage(model=my_model)
     # cov_pace = coverage1.final_coverage(inputs=X_test4, threshold=0.5, K=3)
     # print("pace_cov", exp_id, cov_pace)
-
 
 
 def get_ds_random(countlist,res_get_s, sample_size,X_test,Y_test, X_test2, Y_test2, res,ds, my_model,acc):
@@ -179,7 +183,6 @@ def get_std1_random(X_test, Y_test, a_unoise, countlist,res,label_noise, first_n
     print(dss)
     return dss
 
-
 def get_mnist(**kwargs):
     (_, _), (X_test, Y_test) = mnist.load_data()
     X_test = X_test.astype('float32')
@@ -242,7 +245,6 @@ def get_imagenet(**kwargs):
         X_test = resnet50.preprocess_input(X_test)
         Y_test = keras.utils.to_categorical(Y_test, num_classes=1000)
     return X_test,Y_test
-
 
 def get_svhn(**kwargs):
     from mnist_cifar_imagenet_svhn import SVNH_DatasetUtil
@@ -324,13 +326,28 @@ def get_traffic_sign(**kwargs):
     return x_test,y_test
 
 def get_adv_mnist(**kwargs):
-    image_path = os.path.join(basedir,'data','adv_image/bim_mnist_image.npy')
-    label_path = os.path.join(basedir,'data','adv_image/bim_mnist_label.npy')
+    image_path = os.path.join(basedir,'data','adv_image/fgsm_bim_pgd_clean_mnist_image.npy')
+    label_path = os.path.join(basedir,'data','adv_image/fgsm_bim_pgd_clean_mnist_label.npy')
     x_test = np.load(image_path)
     # x_test = x_test.astype('float32') / 255.0
     y_test = np.load(label_path)
-    y_test = keras.utils.to_categorical(y_test,num_classes=10)
+    #y_test = keras.utils.to_categorical(y_test,num_classes=10)
+    return x_test,y_test
 
+def get_label_mnist(**kwargs):
+    image_path = os.path.join(basedir,'data','label_shift_data/mnist_label_imgs.npy')
+    label_path = os.path.join(basedir,'data','label_shift_data/mnist_label_labels.npy')
+    x_test = np.load(image_path)
+    # x_test = x_test.astype('float32') / 255.0
+    y_test = np.load(label_path)
+    #y_test = keras.utils.to_categorical(y_test,num_classes=10)
+    return x_test,y_test
+
+def get_corrupted_mnist(**kwargs):
+    image_path = os.path.join(basedir,'data','corrupted_image/corrupted_clean_mnist_image.npy')
+    label_path = os.path.join(basedir,'data','corrupted_image/corrupted_clean_mnist_label.npy')
+    x_test = np.load(image_path)
+    y_test = np.load(label_path)
     return x_test,y_test
 
 def get_adv_cifar10(**kwargs):
@@ -339,7 +356,6 @@ def get_adv_cifar10(**kwargs):
     x_test = np.load(image_path).astype('float32')
     y_test = np.load(label_path)
     y_test = keras.utils.to_categorical(y_test,num_classes=10)
-
     return x_test,y_test
 
 def get_adv_fashion(**kwargs):
@@ -348,7 +364,6 @@ def get_adv_fashion(**kwargs):
     x_test = np.load(image_path).astype('float32')
     y_test = np.load(label_path)
     y_test = keras.utils.to_categorical(y_test,num_classes=10)
-
     return x_test,y_test
 
 def get_adv_svhn(**kwargs):
@@ -386,6 +401,17 @@ def get_combined_svhn(**kwargs):
     y_test = keras.utils.to_categorical(y_test, num_classes=10)
     return x_test,y_test
 
+def get_mnist_emnist(**kwargs):
+    image_path = os.path.join(basedir, 'data', 'natural_shift_data/mnist_emnist_mix_imgs.npy')
+    label_path = os.path.join(basedir, 'data', 'natural_shift_data/mnist_emnist_mix_labels.npy')
+    x_test = np.load(image_path).astype('float32')
+    y_test = np.load(label_path)
+    y_test = keras.utils.to_categorical(y_test, num_classes=10)
+    import pdb; pdb.set_trace()
+    return x_test, y_test
+
+
+
 def get_data(exp_id):
     exp_model_dict = {'lenet1': get_mnist,
                       'lenet4': get_mnist,
@@ -408,7 +434,11 @@ def get_data(exp_id):
                       'combined_cifar10':get_combined_cifar10,
                       'combined_fashion':get_combined_fashion,
                       'combined_svhn':get_combined_svhn,
-                      'vgg16':get_cifar10}
+                      'vgg16':get_cifar10,
+                      'corrupted_mnist':get_corrupted_mnist,
+                      'label_mnist':get_label_mnist,
+                      'mnist_emnist':get_mnist_emnist,}
+
     return exp_model_dict[exp_id](exp_id=exp_id)
 
 
@@ -434,7 +464,10 @@ def get_model(exp_id):
                       'combined_fashion':'model/model_fashion.hdf5',
                       'combined_svhn':'model/model_svhn.hdf5',
                       'vgg16':'model/cifar10-vgg16_model_alllayers.h5',
-                      'catvsdog':'model/cats_and_dogs_small_1.h5'}
+                      'catvsdog':'model/cats_and_dogs_small_1.h5',
+                      'corrupted_mnist':'model/LeNet-5.h5',
+                      'label_mnist':'model/LeNet-5.h5',
+                      'mnist_emnist':'model/LeNet-5.h5',}
 
     if exp_id == 'vgg19':
         my_model = vgg19.VGG19(weights='imagenet')
@@ -496,15 +529,15 @@ if __name__=="__main__":
     exp_id = console_flags.exp_id
     min_cluster_size = console_flags.min_cluster_size
     min_samples = console_flags.min_samples
-    acc = get_acc(exp_id)
+    #acc = get_acc(exp_id)
     # start = datetime.datetime.now()
 
     my_model = get_model(exp_id=exp_id)
     X_test,Y_test = get_data(exp_id=exp_id)
     print(my_model.summary())
     print(X_test.shape)
-    # get_score(X_test,Y_test,my_model)
-
+    get_score(X_test,Y_test,my_model)
+    entropy(X_test, Y_test, my_model, 50)
     start = datetime.datetime.now()
 
     dense_layer_model = Model(inputs=my_model.input, outputs=my_model.layers[select_layer_idx].output)
@@ -512,6 +545,7 @@ if __name__=="__main__":
     print(dense_output.shape)
 
     from sklearn.preprocessing import MinMaxScaler
+    import hdbscan
 
     minMax = MinMaxScaler()
     dense_output = minMax.fit_transform(dense_output)
@@ -593,7 +627,7 @@ if __name__=="__main__":
 
     #非异常点每一类的排序，key类别号
     res_get_s = {}
-
+    from mnist_cifar_imagenet_svhn.mmd_critic.run_digits_new import run
     for key in res:
         temp_dense = []
         for l in res[key]:
@@ -603,7 +637,7 @@ if __name__=="__main__":
         mmd_res, _ = run(temp_dense, temp_label, gamma=0.026, m=min(len(temp_dense), 180), k=0, ktype=0, outfig=None,
                     critoutfig=None, testfile=os.path.join(basedir,'data/a.txt'))
         res_get_s[key] = mmd_res
-
+    import openpyxl
     #将结果保存到excel
     workbook = openpyxl.Workbook()
     sheet = workbook.active

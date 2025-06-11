@@ -40,8 +40,8 @@ def atan_layer_shape(input_shape):
     return input_shape
 
 
-def normal_init(shape):
-    return K.truncated_normal(shape, stddev=0.1)
+def normal_init(shape, dtype=None):
+    return K.truncated_normal(shape, mean=0.0, stddev=0.1, dtype=dtype)
 
 
 def normalize(x):
