@@ -7,6 +7,8 @@ import numpy as np
 from keras.models import Model
 from keras.layers.convolutional import Conv2D
 from keras.layers.core import Dense
+from scipy.stats import gaussian_kde
+from functools import reduce
 
 def make_batch(X, Y, batch_size):
     for start in range(0, len(X), batch_size):
@@ -255,6 +257,122 @@ def nac_select(X, y, model, budget, t=0.5):
     selected_indices = ranked_indices[:budget]
     return X[selected_indices], y[selected_indices], selected_indices
 
+class LSA(object):
+    def __init__(self,train,input,layers,std=0.05):
+        '''
+        train:训练集数据
+        input:输入张量
+        layers:输出张量层
+        '''
+        self.train=train
+        self.input=input
+        self.layers=layers
+        self.std=std
+        self.lst=[]
+        self.std_lst=[]
+        self.mask=[]
+        self.neuron_activate_train=[]
+        index_lst=[]
+
+        for index,l in layers:
+            self.lst.append(Model(inputs=input,outputs=l))
+            index_lst.append(index)
+            i=Model(inputs=input,outputs=l)
+            if index=='conv':
+                temp=i.predict(train).reshape(len(train),-1,l.shape[-1])
+                temp=np.mean(temp,axis=1)
+            if index=='dense':
+                temp=i.predict(train).reshape(len(train),l.shape[-1])
+            self.neuron_activate_train.append(temp.copy())
+            self.std_lst.append(np.std(temp,axis=0))
+            self.mask.append((np.array(self.std_lst)>std))
+        self.neuron_activate_train=np.concatenate(self.neuron_activate_train,axis=1)
+        self.mask=np.concatenate(self.mask,axis=0)
+        #self.lst=list(zip(index_lst,self.lst))
+
+    def fit(self,test,use_lower=False):
+        self.neuron_activate_test=[]
+        for index,l in self.lst:
+            if index=='conv':
+                temp=l.predict(test).reshape(len(test),-1,l.output.shape[-1])
+                temp=np.mean(temp,axis=1)
+            if index=='dense':
+                temp=l.predict(test).reshape(len(test),l.output.shape[-1])
+            self.neuron_activate_test.append(temp.copy())
+        self.neuron_activate_test=np.concatenate(self.neuron_activate_test,axis=1)
+        test_score = []
+        for test_sample in self.neuron_activate_test[:,self.mask]:
+            test_mean = np.zeros_like(test_sample)
+            for train_sample in self.neuron_activate_train[:,self.mask]:
+                temp = test_sample-train_sample
+                kde = gaussian_kde(temp, bw_method='scott')
+                test_mean+=kde.evaluate(temp)
+            test_score.append(reduce(lambda x,y:np.log(x)+np.log(y),test_mean/len(self.neuron_activate_train)))
+        return test_score
+
+def lsa_select(X, y, model, budget, std=0.05):
+    layers = extract_layers(model)
+    lsa_model = LSA(train=X, input=model.input, layers=layers, std=std)
+    scores = lsa_model.fit(X)
+    idx = np.argsort(scores)[::-1]
+    selected_idx = idx[:budget]
+    return X[selected_idx], y[selected_idx], selected_idx
+
+class DSA(object):
+    def __init__(self,train,label,input,layers,std=0.05):
+        '''
+        train:训练集数据
+        input:输入张量
+        layers:输出张量层
+        '''
+        self.train=train
+        self.input=input
+        self.layers=layers
+        self.std=std
+        self.lst=[]
+        self.std_lst=[]
+        self.mask=[]
+        self.neuron_activate_train=[]
+        index_lst=[]
+
+        for index,l in layers:
+            self.lst.append(Model(inputs=input,outputs=l))
+            index_lst.append(index)
+            i=Model(inputs=input,outputs=l)
+            if index=='conv':
+                temp=i.predict(train).reshape(len(train),-1,l.shape[-1])
+                temp=np.mean(temp,axis=1)
+            if index=='dense':
+                temp=i.predict(train).reshape(len(train),l.shape[-1])
+            self.neuron_activate_train.append(temp.copy())
+        self.neuron_activate_train=np.concatenate(self.neuron_activate_train,axis=1)
+        self.train_label = np.array(label)
+
+    def fit(self,test,label,use_lower=False):
+        self.neuron_activate_test=[]
+        for index,l in self.lst:
+            if index=='conv':
+                temp=l.predict(test).reshape(len(test),-1,l.output.shape[-1])
+                temp=np.mean(temp,axis=1)
+            if index=='dense':
+                temp=l.predict(test).reshape(len(test),l.output.shape[-1])
+            self.neuron_activate_test.append(temp.copy())
+        self.neuron_activate_test=np.concatenate(self.neuron_activate_test,axis=1)
+        test_score = []
+        for test_sample,label_sample in zip(self.neuron_activate_test,label):
+            dist_a = np.min(((self.neuron_activate_train[self.train_label == label_sample,:]-test_sample)**2).sum(axis=1))
+            dist_b = np.min(((self.neuron_activate_train[self.train_label != label_sample,:]-test_sample)**2).sum(axis=1))
+            test_score.append(dist_a/dist_b)
+        return test_score
+
+def dsa_select(X, y, model, budget, std=0.05):
+    layers = extract_layers(model)
+    dsa_model = DSA(train=X, label=y, input=model.input, layers=layers, std=std)
+    scores = dsa_model.fit(X, y)
+    idx = np.argsort(scores)[::-1]
+    selected_idx = idx[:budget]
+    return X[selected_idx], y[selected_idx], selected_idx
+
 def select(X, y, model, budget, metric, batch_size=128, **kwargs):
     if metric == 'rnd':
         return random_select(X, y, budget)
@@ -266,5 +384,9 @@ def select(X, y, model, budget, metric, batch_size=128, **kwargs):
         return kmnc_select(X, y, model, budget, k_bins=kwargs.get('k_bins', 1000))
     elif metric == 'nac':
         return nac_select(X, y, model, budget, t=kwargs.get('t', 0.5))
+    elif metric == 'lsa':
+        return lsa_select(X, y, model, budget, std=kwargs.get('std', 0.05))
+    elif metric == 'dsa':
+        return dsa_select(X, y, model, budget, std=kwargs.get('std', 0.05))
     else:
         raise NotImplementedError(f"Metric '{metric}' is not implemented.")
