@@ -715,5 +715,15 @@ def select(X, y, model, budget, metric, batch_size=128, **kwargs):
         return neuron_coverage_select(X, y, model, budget, t=kwargs.get('t', 0.25), batch_size=batch_size)
     elif metric == 'std':
         return std_select(X, y, budget)
+    elif metric == 'pace':
+        return pace(X, y, model, budget, batch_size=batch_size, layer_idx=kwargs.get('layer_idx', -2), min_cluster_size=kwargs.get('min_cluster_size', 5), min_samples=kwargs.get('min_samples', 5))
+    elif metric == 'dr':
+        return dr(X, y, model, budget, batch_size=batch_size, KN=kwargs.get('KN', 20))
+    elif metric == 'ces':
+        return ces_select(X, y, model, budget, batch_size=batch_size, layer_name=kwargs.get('layer_name', None), interval_dict=kwargs.get('interval_dict', {}), proba_dict=kwargs.get('proba_dict', {}))
+    elif metric == 'mcp':
+        return mcp_select(X, y, model, budget, batch_size=batch_size)
+    elif metric == 'deepest':
+        return deepest(X, y, model, budget, batch_size=batch_size, occurrence_prob=kwargs.get('occurrence_prob', None))
     else:
         raise NotImplementedError(f"Metric '{metric}' is not implemented.")
