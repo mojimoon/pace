@@ -28,29 +28,30 @@ def run_selection(model_name, test_set, testX, testy, metricList, budgets):
 
     for m in metricList:
         for b in budgets:
-            # try:
-            selectedX, selectedy, idx = metrics.select(
-                testX, testy, model, b, m
-            )
-            score = model.evaluate(selectedX, selectedy, verbose=0)
-            test_out_dir = os.path.join(test_dir, test_set, model_name, m, str(b))
-            if not os.path.exists(test_out_dir):
-                os.makedirs(test_out_dir)
-            # save idx to X.txt and true values to y.txt
-            np.savetxt(os.path.join(test_out_dir, 'X.txt'), idx, fmt='%d')
-            np.savetxt(os.path.join(test_out_dir, 'y.txt'), onehot_to_int(selectedy).astype(int), fmt='%d')
-            with open(out_csv, 'a') as f:
-                f.write(f'{model_name},{test_set},{m},{b},{score[1]}\n')
-            # except Exception as e:
-            #     with open('log/mnist.log', 'a') as f:
-            #         f.write(f'Error with model {model_name}, test_set {test_set}, metric {m}, budget {b}: {str(e)}\n')
+            try:
+                selectedX, selectedy, idx = metrics.select(
+                    testX, testy, model, b, m
+                )
+                score = model.evaluate(selectedX, selectedy, verbose=0)
+                test_out_dir = os.path.join(test_dir, test_set, model_name, m, str(b))
+                if not os.path.exists(test_out_dir):
+                    os.makedirs(test_out_dir)
+                # save idx to X.txt and true values to y.txt
+                np.savetxt(os.path.join(test_out_dir, 'X.txt'), idx, fmt='%d')
+                np.savetxt(os.path.join(test_out_dir, 'y.txt'), onehot_to_int(selectedy).astype(int), fmt='%d')
+                with open(out_csv, 'a') as f:
+                    f.write(f'{model_name},{test_set},{m},{b},{score[1]}\n')
+            except Exception as e:
+                with open('log/mnist.log', 'a') as f:
+                    f.write(f'Error with model {model_name}, test_set {test_set}, metric {m}, budget {b}: {str(e)}\n')
 
 def main():
     if not os.path.exists(out_csv):
         with open(out_csv, 'w') as f:
             f.write('model,test_set,selection_metric,budget,accuracy\n')
 
-    run_selection('lenet1', 'mnist', testX, testy, ['nc'], budgets)
+    for model_name in model_names:
+        run_selection(model_name, 'mnist', testX, testy, ['rnd', 'ent', 'gini', 'dat', 'gd', 'kmnc', 'nac', 'lsa', 'dsa'], budgets)
 
 if __name__ == '__main__':
     main()
