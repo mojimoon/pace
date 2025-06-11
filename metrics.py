@@ -627,6 +627,37 @@ def ces_select(X, model, interval_dict, proba_dict, layer_name=None, budget=100,
     selected_indices = indices[topk]
     return X[selected_indices], selected_indices, scores[topk]
 
+def mcp_score(proba):
+    """
+    MCP分数：次大值与最大值的比值，越高表示越不自信
+    proba: 2D numpy array, shape (n_samples, n_classes)
+    """
+    sorted_proba = np.sort(proba, axis=1)
+    max_proba = sorted_proba[:, -1]
+    second_max_proba = sorted_proba[:, -2]
+    score = second_max_proba / (max_proba + 1e-8)
+    return score
+
+def mcp_select(X, y, model, budget, batch_size=128):
+    """
+    按MCP度量选择测试用例
+    X: 输入样本
+    y: 样本标签
+    model: Keras模型
+    budget: 选择多少个样本
+    batch_size: 批量大小
+    返回：被选中的 X, y, 以及被选中的下标
+    """
+    mcp_scores = []
+    for i in range(0, len(X), batch_size):
+        x_batch = X[i:i+batch_size]
+        proba = model.predict(x_batch)
+        mcp_scores.append(mcp_score(proba))
+    scores = np.concatenate(mcp_scores)
+    idx = np.argsort(scores)[::-1]  # 按最大MCP分数降序
+    selected_idx = idx[:budget]
+    return X[selected_idx], y[selected_idx], selected_idx
+
 def select(X, y, model, budget, metric, batch_size=128, **kwargs):
     if metric == 'rnd':
         return random_select(X, y, budget)
