@@ -22,18 +22,22 @@ def run_selection(model_name, test_set, testX, testy, metrics, budgets):
     # def select(sess, candidateX, candidatey, model, budget, selection_metric, **kwargs)
     for m in metrics:
         for b in budgets:
-            sess = tf.Session()
-            selectedX, selectedy = sm.select(
-                sess, testX, testy, model, b, m
-            )
-            score = model.evaluate(selectedX, selectedy, verbose=0)
-            test_out_dir = os.path.join(test_dir, test_set, model_name, m, str(b))
-            if not os.path.exists(test_out_dir):
-                os.makedirs(test_out_dir)
-            np.save(os.path.join(test_out_dir, 'X.npy'), selectedX)
-            np.save(os.path.join(test_out_dir, 'y.npy'), selectedy)
-            with open(out_csv, 'a') as f:
-                f.write(f'{model_name},{test_set},{m},{b},{score[0]},{score[1]}\n')
+            try:
+                sess = tf.compat.v1.Session()
+                selectedX, selectedy = sm.select(
+                    sess, testX, testy, model, b, m
+                )
+                score = model.evaluate(selectedX, selectedy, verbose=0)
+                test_out_dir = os.path.join(test_dir, test_set, model_name, m, str(b))
+                if not os.path.exists(test_out_dir):
+                    os.makedirs(test_out_dir)
+                np.save(os.path.join(test_out_dir, 'X.npy'), selectedX)
+                np.save(os.path.join(test_out_dir, 'y.npy'), selectedy)
+                with open(out_csv, 'a') as f:
+                    f.write(f'{model_name},{test_set},{m},{b},{score[0]},{score[1]}\n')
+            except Exception as e:
+                with open('log/mnist.log', 'a') as f:
+                    f.write(f'Error with model {model_name}, test_set {test_set}, metric {m}, budget {b}: {str(e)}\n')
 
 def main():
     if not os.path.exists(out_csv):

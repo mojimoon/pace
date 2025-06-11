@@ -1,0 +1,2 @@
+model,test_set,selection_metric,budget,loss,accuracy
+lenet1,mnist,rnd,50,0.17149564667087794,0.9486820101737976
