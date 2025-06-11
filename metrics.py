@@ -581,7 +581,7 @@ def ces_entropy(neuron_output, intervals, bench_proba):
         entropies[:, idx] = -np.log(p)
     return np.mean(entropies, axis=1)
 
-def ces_select(X, model, interval_dict, proba_dict, layer_name=None, budget=100, batch_size=128):
+def ces_select(X, y, model, budget, batch_size=128, layer_name=None, interval_dict=None, proba_dict=None):
     """
     Cross-Entropy-based Sampling for DNN testing.
     X: test data, shape [N, ...]
@@ -625,7 +625,7 @@ def ces_select(X, model, interval_dict, proba_dict, layer_name=None, budget=100,
     indices = np.array(indices)
     topk = np.argsort(scores)[::-1][:budget]
     selected_indices = indices[topk]
-    return X[selected_indices], selected_indices, scores[topk]
+    return X[selected_indices], y[selected_indices], selected_indices, scores[topk]
 
 def mcp_score(proba):
     """
@@ -655,6 +655,42 @@ def mcp_select(X, y, model, budget, batch_size=128):
         mcp_scores.append(mcp_score(proba))
     scores = np.concatenate(mcp_scores)
     idx = np.argsort(scores)[::-1]  # 按最大MCP分数降序
+    selected_idx = idx[:budget]
+    return X[selected_idx], y[selected_idx], selected_idx
+
+def deepest(X, y, model, budget, batch_size=128, occurrence_prob=None):
+    """
+    DeepEST selection metric for DNN testing.
+
+    X: np.ndarray, input data
+    y: np.ndarray, labels
+    model: Keras model with .predict()
+    budget: int, number of samples to select
+    occurrence_prob: None or np.ndarray, optional, shape (n_samples,)
+        If None, uniform probability is used.
+    d: float, probability threshold for selection (between 0 and 1)
+    batch_size: int, for model prediction
+
+    Returns: (X_sel, y_sel, selected_idx)
+    """
+    n_samples = X.shape[0]
+    if occurrence_prob is None:
+        occurrence_prob = np.ones(n_samples) / n_samples
+
+    # 1. Model prediction
+    proba = []
+    for i in range(0, n_samples, batch_size):
+        proba.append(model.predict(X[i:i+batch_size]))
+    proba = np.concatenate(proba, axis=0)
+
+    # 2. 假设“失败概率”为 1 - max proba（最高的不确定性/出错可能）
+    fail_prob = 1 - np.max(proba, axis=1)
+
+    # 3. DeepEST 估计分数: occurrence_prob * fail_prob
+    estimationX = occurrence_prob * fail_prob * n_samples
+
+    # 4. 选择分数最高的样本
+    idx = np.argsort(estimationX)[::-1]  # 从高到低排序
     selected_idx = idx[:budget]
     return X[selected_idx], y[selected_idx], selected_idx
 
