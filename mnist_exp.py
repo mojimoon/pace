@@ -50,7 +50,7 @@ def main():
         with open(out_csv, 'w') as f:
             f.write('model,test_set,selection_metric,budget,accuracy\n')
 
-    run_selection('lenet1', 'mnist', testX, testy, ['kmnc', 'nac'], budgets)
+    run_selection('lenet1', 'mnist', testX, testy, ['gd', 'std'], budgets)
 
 if __name__ == '__main__':
     main()

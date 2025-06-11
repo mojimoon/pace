@@ -27,7 +27,6 @@ def entropy(proba):
 
 def entropy_select(X, y, model, budget, batch_size=128):
     ent = []
-    n_samples = X.shape[0]
     for x_batch, y_batch in make_batch(X, y, batch_size):
         proba = model.predict(x_batch)
         ent.append(entropy(proba))
@@ -42,7 +41,6 @@ def gini(proba):
 
 def gini_select(X, y, model, budget, batch_size=128):
     raw = []
-    n_samples = X.shape[0]
     for x_batch, y_batch in make_batch(X, y, batch_size):
         proba = model.predict(x_batch)
         raw.append(gini(proba))
@@ -381,18 +379,20 @@ def geometric_diversity_select(X, y, model, budget, batch_size=128, layer_idx=No
         layer = model.layers[layer_idx]
     else:
         layer = model.layers[-2] # typically the last dense layer before output
-    
-    hidden_size = layer.output_shape[-1]
-    feat = np.zeros((1, hidden_size))
+
+    feat = []
+
+    intermediate_layer_model = Model(inputs=model.input, outputs=layer.output)
     for x_batch, y_batch in make_batch(X, y, batch_size):
-        _feat = layer.predict(x_batch)
-        feat = np.vstack((feat, _feat))
-    feat_mat = feat[1:]
+        _feat = intermediate_layer_model.predict(x_batch)
+        feat.append(_feat)
+    feat_mat = np.vstack(feat)
+    # print(f"Feature matrix shape: {feat_mat.shape}")
     GD_scores, selected_indices = [], []
     for _ in range(no_groups):
         select_idx = np.random.choice(np.arange(len(feat_mat)), budget)
         selected_indices.append(select_idx)
-        select_group = feat_mat[select_idx] #shape (bg*len, feat)
+        select_group = feat_mat[select_idx]
         # normalize group
         normalize_select_group = min_max_scaler.fit_transform(select_group)
         # compute GD
@@ -404,14 +404,47 @@ def geometric_diversity_select(X, y, model, budget, batch_size=128, layer_idx=No
     
     return X[chosen_indices], y[chosen_indices], chosen_indices
 
-def std_select(X, y, model, budget, batch_size=128):
-    scores = []
-    for x_batch, y_batch in make_batch(X, y, batch_size):
-        proba = model.predict(x_batch)
-        std_score = np.std(proba, axis=1)
-        scores.append(std_score)
-    scores = np.concatenate(scores)
-    idx = np.argsort(scores)[::-1]  # Largest std first
+'''
+\textbf{Neuron Coverage (NC)} \cite{pei2017deepxplore} (coverage-based, 2017) computes the ratio of neurons in a given DNN $M$ that are activated above a self-defined threshold value by a given test suite $X_s$:  $NC(X_s) = \frac{|\{n| \forall x \in X_s, a(n,x)>t \}|}{|N|}$. $N = \{n_1, n_2,...\}$ denotes all neurons in the DNN model under test. $a(n,x)$ is the neuron activation value produced by test input $x$ on neuron $n \in N$. $t$ is the self-defined neuron activation threshold. We set $t=0.25$, which is commonly used in Deepxplore and DLFuzz. 
+
+\textbf{Standard Deviation (STD)} \cite{aghababaeyan2023black} (diversity-based, 2023) is a statistical measure of how far from the mean a group of data points is. For a test suite $X_s$, it is calculated as the norm of the standard deviation of each feature in the input set. Formally, $STD(X_s) = \Vert (\sqrt{\sum_{i=1}^{n}  \frac{V_{x_{i,j}} - \mu_j}{n}}, 1 \leq j \leq m) \Vert$, where $V_x$ is the feature matrix of the input set $X_s$ , $m$ is the number of features, $\mu_j$ is the mean value of feature $j$ in $V_x$.
+'''
+
+def predict_activations(model, X, layer_names=None, batch_size=128):
+    if layer_names is None:
+        # select all Dense and Aactivation layers
+        selected_layers = [l for l in model.layers if isinstance(l, Dense) or 'activation' in l.name]
+    else:
+        selected_layers = [l for l in model.layers if l.name in layer_names]
+    intermediate_layer_model = Model(inputs=model.input, outputs=[l.output for l in selected_layers])
+    acts = intermediate_layer_model.predict(X, batch_size=batch_size)
+    if isinstance(acts, list):
+        acts = [a.reshape((a.shape[0], -1)) for a in acts]
+        activations = np.concatenate(acts, axis=1)
+    else:
+        activations = acts
+    return activations
+
+def neuron_coverage_select(X, y, model, budget, t=0.25, batch_size=128):
+    activations = predict_activations(model, X, batch_size=batch_size)
+    neuron_max = np.max(activations, axis=0) # shape (num_neurons,)
+    covered = (neuron_max > t)
+    nc = np.sum(covered) / covered.size
+
+    idx = np.argsort(nc)[::-1]
+    selected_idx = idx[:budget]
+    return X[selected_idx], y[selected_idx], selected_idx
+
+def std_select(X, y, budget):
+    X = np.asarray(X)
+    if X.ndim > 2:
+        # Flatten all but first axis (sample axis)
+        X_flat = X.reshape(X.shape[0], -1)
+    else:
+        X_flat = X
+    std_vec = np.std(X_flat, axis=0)
+    std_norm = np.linalg.norm(std_vec)
+    idx = np.argsort(std_norm)[::-1]
     selected_idx = idx[:budget]
     return X[selected_idx], y[selected_idx], selected_idx
 
@@ -432,7 +465,9 @@ def select(X, y, model, budget, metric, batch_size=128, **kwargs):
         return dsa_select(X, y, model, budget, std=kwargs.get('std', 0.05))
     elif metric == 'gd':
         return geometric_diversity_select(X, y, model, budget, batch_size, layer_idx=kwargs.get('layer_idx'), no_groups=kwargs.get('no_groups', 50))
+    elif metric == 'nc':
+        return neuron_coverage_select(X, y, model, budget, t=kwargs.get('t', 0.25), batch_size=batch_size)
     elif metric == 'std':
-        return std_select(X, y, model, budget, batch_size)
+        return std_select(X, y, budget)
     else:
         raise NotImplementedError(f"Metric '{metric}' is not implemented.")
