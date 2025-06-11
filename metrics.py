@@ -33,7 +33,7 @@ def entropy_select(X, y, model, budget, batch_size=128):
     scores = np.concatenate(ent)
     idx = np.argsort(scores)[::-1] # Largest entropy first
     selected_idx = idx[:budget]
-    return X[selected_idx], y[selected_idx], idx
+    return X[selected_idx], y[selected_idx], selected_idx
 
 def gini(proba):
     gini_val = 1 - np.sum(proba ** 2, axis=1)
@@ -47,7 +47,7 @@ def gini_select(X, y, model, budget, batch_size=128):
     scores = np.concatenate(raw)
     idx = np.argsort(scores)[::-1]
     selected_idx = idx[:budget]
-    return X[selected_idx], y[selected_idx], idx
+    return X[selected_idx], y[selected_idx], selected_idx
 
 def extract_layers(model):
     layers = []
@@ -372,14 +372,9 @@ def dsa_select(X, y, model, budget, std=0.05):
     selected_idx = idx[:budget]
     return X[selected_idx], y[selected_idx], selected_idx
 
-def geometric_diversity_select(X, y, model, budget, batch_size=128, layer_idx=None, no_groups=50):
+def geometric_diversity_select(X, y, model, budget, batch_size=128, layer_idx=-2, no_groups=50):
     min_max_scaler = preprocessing.MinMaxScaler()
-
-    if layer_idx is not None:
-        layer = model.layers[layer_idx]
-    else:
-        layer = model.layers[-2] # typically the last dense layer before output
-
+    layer = model.layers[layer_idx]
     feat = []
 
     intermediate_layer_model = Model(inputs=model.input, outputs=layer.output)
@@ -448,6 +443,52 @@ def std_select(X, y, budget):
     selected_idx = idx[:budget]
     return X[selected_idx], y[selected_idx], selected_idx
 
+def pace(X, y, model, budget, batch_size=128, layer_idx=-2, min_cluster_size=5, min_samples=5):
+    import hdbscan
+    """
+    PACE testing selection metric.
+    1. 提取模型在指定层的特征（默认倒数第二层）。
+    2. 用 HDBSCAN 聚类，找出噪声点（异常点）。
+    3. 优先选择噪声点，不足时再从最大簇采样。
+    """
+    # 1. 获取特征表示
+    feature_model = Model(inputs=model.input, outputs=model.layers[layer_idx].output)
+    features = feature_model.predict(X, batch_size=batch_size)
+    
+    # 2. 归一化
+    from sklearn.preprocessing import normalize
+    features_norm = normalize(features)
+    
+    # 3. 聚类
+    clusterer = hdbscan.HDBSCAN(
+        min_cluster_size=min_cluster_size,
+        min_samples=min_samples
+    )
+    labels = clusterer.fit_predict(features_norm)
+    # -1 表示噪声点
+    noise_idx = np.where(labels == -1)[0]
+    normal_idx = np.where(labels != -1)[0]
+    
+    # 4. 选择样本
+    if len(noise_idx) >= budget:
+        selected_idx = noise_idx[:budget]
+    else:
+        # 不足预算时，补最大簇的样本
+        from collections import Counter
+        label_count = Counter(labels[normal_idx])
+        # 找最大簇标签
+        if label_count:
+            max_cluster = label_count.most_common(1)[0][0]
+            cluster_idx = normal_idx[labels[normal_idx] == max_cluster]
+            n_needed = budget - len(noise_idx)
+            extra_idx = cluster_idx[:n_needed]
+            selected_idx = np.concatenate([noise_idx, extra_idx])
+        else:
+            selected_idx = noise_idx  # 只有噪声点
+    
+    # 5. 返回被选中的样本
+    return X[selected_idx], y[selected_idx], selected_idx
+
 def select(X, y, model, budget, metric, batch_size=128, **kwargs):
     if metric == 'rnd':
         return random_select(X, y, budget)
@@ -464,7 +505,7 @@ def select(X, y, model, budget, metric, batch_size=128, **kwargs):
     elif metric == 'dsa':
         return dsa_select(X, y, model, budget, std=kwargs.get('std', 0.05))
     elif metric == 'gd':
-        return geometric_diversity_select(X, y, model, budget, batch_size, layer_idx=kwargs.get('layer_idx'), no_groups=kwargs.get('no_groups', 50))
+        return geometric_diversity_select(X, y, model, budget, batch_size, layer_idx=kwargs.get('layer_idx', -2), no_groups=kwargs.get('no_groups', 50))
     elif metric == 'nc':
         return neuron_coverage_select(X, y, model, budget, t=kwargs.get('t', 0.25), batch_size=batch_size)
     elif metric == 'std':
