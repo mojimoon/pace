@@ -847,13 +847,13 @@ def select(sess, candidateX, candidatey, model, budget, selection_metric, **kwar
         return deepest(sess, candidateX, candidatey, model, budget, d)
 
 
-if __name__ == '__main__':
-    (_, _), (X_test, Y_test) = mnist.load_data()
-    X_test = X_test.astype('float32')
-    X_test = X_test.reshape(X_test.shape[0], 28, 28, 1)
-    X_test /= 255
-    y_test = to_categorical(Y_test, 10)
-    budget = 50
-    my_model = keras.models.load_model(os.path.join(basedir, exp_model_dict[exp_id]))
-    x,y,score = entropy(X_test, y_test, model, budget)
+# if __name__ == '__main__':
+#     (_, _), (X_test, Y_test) = mnist.load_data()
+#     X_test = X_test.astype('float32')
+#     X_test = X_test.reshape(X_test.shape[0], 28, 28, 1)
+#     X_test /= 255
+#     y_test = to_categorical(Y_test, 10)
+#     budget = 50
+#     my_model = keras.models.load_model(os.path.join(basedir, exp_model_dict[exp_id]))
+#     x,y,score = entropy(X_test, y_test, model, budget)
 
