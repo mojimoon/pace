@@ -489,6 +489,76 @@ def pace(X, y, model, budget, batch_size=128, layer_idx=-2, min_cluster_size=5, 
     # 5. 返回被选中的样本
     return X[selected_idx], y[selected_idx], selected_idx
 
+def dr(X, y, model, budget, batch_size=128, KN=20):
+    """
+    DeepReduce-inspired DNN test selection metric function.
+    
+    Args:
+        X: Input data, shape (N, ...).
+        y: Labels for X.
+        model: Keras model with a .predict method, outputs neuron activations (not just softmax).
+        budget: Number of samples to select.
+        batch_size: Batch size for model predictions.
+        KN: Number of bins for neuron activation quantization.
+        
+    Returns:
+        X_selected, y_selected, selected_idx (np.ndarray)
+    """
+    # 1. Get model outputs (activations) for all data
+    outputs = []
+    for i in range(0, len(X), batch_size):
+        x_batch = X[i:i+batch_size]
+        batch_out = model.predict(x_batch)
+        # If model outputs (N, C), reshape to (N, C)
+        outputs.append(batch_out)
+    outputs = np.concatenate(outputs, axis=0)  # Shape (N, num_neurons)
+    tnum, nnum = outputs.shape
+
+    # 2. Quantize activations (heavy-tailed binning, like getSection_heavytailed)
+    def quantize_heavytailed(outputs, KN):
+        NIndex = np.zeros_like(outputs, dtype=int)
+        for n in range(outputs.shape[1]):
+            values = outputs[:, n]
+            uniq = np.unique(values)
+            uniq.sort()
+            thresholds = [uniq[int(len(uniq)/KN*i)] for i in range(KN)]
+            thresholds.append(uniq[-1] + 1e-6)
+            for i in range(len(values)):
+                for k in range(KN):
+                    if values[i] < thresholds[k+1]:
+                        NIndex[i, n] = k
+                        break
+        return NIndex
+    NIndex = quantize_heavytailed(outputs, KN)
+
+    # 3. Compute neuron activation distribution over dataset (getDistribute_heavytailed)
+    def calc_dist(NIndex, KN):
+        NDist = np.zeros((NIndex.shape[1], KN))
+        for i in range(NIndex.shape[0]):
+            for n in range(NIndex.shape[1]):
+                NDist[n, NIndex[i, n]] += 1
+        NDist /= NIndex.shape[0]
+        return NDist
+    NDist = calc_dist(NIndex, KN)
+
+    # 4. Score each sample by its KL divergence to the global neuron distribution (like calculate_kl)
+    def kl_score(sample_idx):
+        # For a sample, get bin indices for all neurons
+        bins = NIndex[sample_idx]
+        p = np.zeros((nnum, KN))
+        for i in range(nnum):
+            p[i, bins[i]] = 1.0
+        eps = 1e-15
+        kl = np.sum(p * np.log(np.clip(p / np.clip(NDist, eps, None), eps, None)))
+        return kl
+
+    scores = np.array([kl_score(i) for i in range(tnum)])
+
+    # 5. Select top-k by KL score (high KL = more "unusual" sample for neuron coverage)
+    idx = np.argsort(scores)[::-1]  # largest KL first
+    selected_idx = idx[:budget]
+    return X[selected_idx], y[selected_idx], selected_idx
+
 def select(X, y, model, budget, metric, batch_size=128, **kwargs):
     if metric == 'rnd':
         return random_select(X, y, budget)
