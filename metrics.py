@@ -11,6 +11,30 @@ from keras.layers.core import Dense
 from scipy.stats import gaussian_kde
 from functools import reduce
 
+def to_ordinal(y):
+    if y.ndim == 1:
+        return y
+    elif y.ndim == 2 and y.shape[1] == 1:
+        return y.flatten()
+    elif y.ndim == 2 and y.shape[1] > 1:
+        return np.argmax(y, axis=1)
+    else:
+        return y
+
+def to_onehot(y, num_classes=None):
+    if y.ndim == 2 and y.shape[1] > 1:
+        return y
+    elif y.ndim == 1:
+        if num_classes is None:
+            num_classes = np.max(y) + 1
+        return np.eye(num_classes)[y]
+    elif y.ndim == 2 and y.shape[1] == 1:
+        if num_classes is None:
+            num_classes = np.max(y) + 1
+        return np.eye(num_classes)[y.flatten()]
+    else:
+        return y
+
 def make_batch(X, Y, batch_size):
     for start in range(0, len(X), batch_size):
         end = min(start + batch_size, len(X))
@@ -358,7 +382,8 @@ class DSA(object):
                 temp=i.predict(train).reshape(len(train),l.shape[-1])
             self.neuron_activate_train.append(temp.copy())
         self.neuron_activate_train=np.concatenate(self.neuron_activate_train,axis=1)
-        self.train_label = np.argmax(np.array(label), axis=1)  # shape: (10000,)
+        # print('train_label shape', label.shape)
+        self.train_label = to_ordinal(label)
 
     def fit(self,test,label,use_lower=False):
         self.neuron_activate_test=[]
@@ -371,12 +396,9 @@ class DSA(object):
             self.neuron_activate_test.append(temp.copy())
         self.neuron_activate_test=np.concatenate(self.neuron_activate_test,axis=1)
         test_score = []
+        # print('label shape', label.shape)
+        label = to_ordinal(label)
         for test_sample,label_sample in zip(self.neuron_activate_test,label):
-            # print("train features shape:", self.neuron_activate_train.shape) # (10000, 26)
-            # print("label shape:", self.train_label.shape) # (10000, 10)
-            # print("bool mask sum:", np.sum(self.train_label == label_sample)) # 82056
-            if label_sample.ndim > 0:
-                label_sample = np.argmax(label_sample)
             dist_a = np.min(((self.neuron_activate_train[self.train_label == label_sample] - test_sample) ** 2).sum(axis=1))
             dist_b = np.min(((self.neuron_activate_train[self.train_label != label_sample] - test_sample) ** 2).sum(axis=1))
             test_score.append(dist_a/dist_b)
