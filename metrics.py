@@ -322,27 +322,19 @@ class LSA(object):
             self.neuron_activate_test.append(temp.copy())
         self.neuron_activate_test=np.concatenate(self.neuron_activate_test,axis=1)
         test_score = []
-        for test_sample in self.neuron_activate_test[:,self.mask]:
-            test_mean = np.zeros_like(test_sample)
-            for train_sample in self.neuron_activate_train[:,self.mask]:
-                temp = test_sample-train_sample
-                kde = gaussian_kde(temp, bw_method='scott')
-                test_mean+=kde.evaluate(temp)
-            test_score.append(reduce(lambda x,y:np.log(x)+np.log(y),test_mean/len(self.neuron_activate_train)))
-
-        # for test_sample in self.neuron_activate_test[:, self.mask]:
+        # for test_sample in self.neuron_activate_test[:,self.mask]:
         #     test_mean = np.zeros_like(test_sample)
-        #     diffs = self.neuron_activate_train[:, self.mask] - test_sample  # shape: (n_train, n_selected_neurons)
-        #     diffs = diffs.T  # shape: (n_selected_neurons, n_train)
+        #     for train_sample in self.neuron_activate_train[:,self.mask]:
+        #         temp = test_sample-train_sample
+        #         kde = gaussian_kde(temp, bw_method='scott')
+        #         test_mean+=kde.evaluate(temp)
+        #     test_score.append(reduce(lambda x,y:np.log(x)+np.log(y),test_mean/len(self.neuron_activate_train)))
 
-        #     # 对每个神经元分别做 KDE
-        #     for neuron_diffs in diffs:
-        #         if np.std(neuron_diffs) < 1e-8:
-        #             continue  # 跳过方差为0的神经元
-        #         kde = gaussian_kde(neuron_diffs)
-        #         test_mean += kde.evaluate(neuron_diffs)
-            
-        #     test_score.append(np.log(test_mean / len(self.neuron_activate_train)))
+        for test_sample in self.neuron_activate_test[:, self.mask]:
+            deltas = self.neuron_activate_train[:, self.mask] - test_sample  # shape (n_train, n_features)
+            deltas = deltas.T  # gaussian_kde expects shape (n_features, n_samples)
+            kde = gaussian_kde(deltas, bw_method='scott')
+            test_score.append(np.log(kde.evaluate(np.zeros((deltas.shape[0], 1)))[0]))
 
         return test_score
 
