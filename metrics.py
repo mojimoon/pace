@@ -271,23 +271,21 @@ class LSA(object):
         self.std_lst=[]
         self.mask=[]
         self.neuron_activate_train=[]
-        index_lst=[]
 
-        for index,l in layers:
-            self.lst.append(Model(inputs=input,outputs=l))
-            index_lst.append(index)
-            i=Model(inputs=input,outputs=l)
-            if index=='conv':
-                temp=i.predict(train).reshape(len(train),-1,l.shape[-1])
-                temp=np.mean(temp,axis=1)
-            if index=='dense':
-                temp=i.predict(train).reshape(len(train),l.shape[-1])
+        for index, l in layers:
+            self.lst.append((index, Model(inputs=input, outputs=l)))
+            i = Model(inputs=input, outputs=l)
+            if index == 'conv':
+                temp = i.predict(train).reshape(len(train), -1, l.shape[-1])
+                temp = np.mean(temp, axis=1)
+            if index == 'dense':
+                temp = i.predict(train).reshape(len(train), l.shape[-1])
             self.neuron_activate_train.append(temp.copy())
-            self.std_lst.append(np.std(temp,axis=0))
-            self.mask.append((np.array(self.std_lst)>std))
+            std_value = np.std(temp, axis=0)
+            self.std_lst.append(std_value)
+            self.mask.append(std_value > self.std)
         self.neuron_activate_train=np.concatenate(self.neuron_activate_train,axis=1)
         self.mask=np.concatenate(self.mask,axis=0)
-        #self.lst=list(zip(index_lst,self.lst))
 
     def fit(self,test,use_lower=False):
         self.neuron_activate_test=[]
@@ -307,6 +305,21 @@ class LSA(object):
                 kde = gaussian_kde(temp, bw_method='scott')
                 test_mean+=kde.evaluate(temp)
             test_score.append(reduce(lambda x,y:np.log(x)+np.log(y),test_mean/len(self.neuron_activate_train)))
+
+        # for test_sample in self.neuron_activate_test[:, self.mask]:
+        #     test_mean = np.zeros_like(test_sample)
+        #     diffs = self.neuron_activate_train[:, self.mask] - test_sample  # shape: (n_train, n_selected_neurons)
+        #     diffs = diffs.T  # shape: (n_selected_neurons, n_train)
+
+        #     # 对每个神经元分别做 KDE
+        #     for neuron_diffs in diffs:
+        #         if np.std(neuron_diffs) < 1e-8:
+        #             continue  # 跳过方差为0的神经元
+        #         kde = gaussian_kde(neuron_diffs)
+        #         test_mean += kde.evaluate(neuron_diffs)
+            
+        #     test_score.append(np.log(test_mean / len(self.neuron_activate_train)))
+
         return test_score
 
 def lsa_select(X, y, model, budget, std=0.05):
@@ -335,7 +348,7 @@ class DSA(object):
         index_lst=[]
 
         for index,l in layers:
-            self.lst.append(Model(inputs=input,outputs=l))
+            self.lst.append((index, Model(inputs=input, outputs=l)))
             index_lst.append(index)
             i=Model(inputs=input,outputs=l)
             if index=='conv':
@@ -359,8 +372,13 @@ class DSA(object):
         self.neuron_activate_test=np.concatenate(self.neuron_activate_test,axis=1)
         test_score = []
         for test_sample,label_sample in zip(self.neuron_activate_test,label):
-            dist_a = np.min(((self.neuron_activate_train[self.train_label == label_sample,:]-test_sample)**2).sum(axis=1))
-            dist_b = np.min(((self.neuron_activate_train[self.train_label != label_sample,:]-test_sample)**2).sum(axis=1))
+            # print("train features shape:", self.neuron_activate_train.shape) # (10000, 26)
+            # print("label shape:", self.train_label.shape) # (10000, 10)
+            # print("bool mask shape:", (self.train_label == label_sample).shape) # (10000, 10)
+            # print("bool mask sum:", np.sum(self.train_label == label_sample)) # 82056
+            # IndexError: boolean index did not match indexed array along dimension 1; dimension is 26 but corresponding boolean dimension is 10
+            dist_a = np.min(((self.neuron_activate_train[self.train_label == label_sample] - test_sample) ** 2).sum(axis=1))
+            dist_b = np.min(((self.neuron_activate_train[self.train_label != label_sample] - test_sample) ** 2).sum(axis=1))
             test_score.append(dist_a/dist_b)
         return test_score
 

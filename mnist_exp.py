@@ -23,12 +23,18 @@ def onehot_to_int(y):
     else:
         raise ValueError("Input must be a one-hot encoded array or a single-dimensional array.")
 
+# def describe_model(model_name):
+#     model = mnist.get_model(model_name)
+#     model.summary()
+#     return model
+
 def run_selection(model_name, test_set, testX, testy, metricList, budgets):
     model = mnist.get_model(model_name)
 
     for m in metricList:
         for b in budgets:
-            try:
+            # try:
+            if True:
                 selectedX, selectedy, idx = metrics.select(
                     testX, testy, model, b, m
                 )
@@ -41,9 +47,9 @@ def run_selection(model_name, test_set, testX, testy, metricList, budgets):
                 np.savetxt(os.path.join(test_out_dir, 'y.txt'), onehot_to_int(selectedy).astype(int), fmt='%d')
                 with open(out_csv, 'a') as f:
                     f.write(f'{model_name},{test_set},{m},{b},{score[1]}\n')
-            except Exception as e:
-                with open('log/mnist.log', 'a') as f:
-                    f.write(f'Error with model {model_name}, test_set {test_set}, metric {m}, budget {b}: {str(e)}\n')
+            # except Exception as e:
+            #     with open('log/mnist.log', 'a') as f:
+            #         f.write(f'Error with model {model_name}, test_set {test_set}, metric {m}, budget {b}: {str(e)}\n')
 
 def main():
     if not os.path.exists(out_csv):
@@ -51,7 +57,7 @@ def main():
             f.write('model,test_set,selection_metric,budget,accuracy\n')
 
     for model_name in model_names:
-        run_selection(model_name, 'mnist', testX, testy, ['rnd', 'ent', 'gini', 'dat', 'gd', 'kmnc', 'nac', 'lsa', 'dsa'], budgets)
+        run_selection(model_name, 'mnist', testX, testy, ['dsa'], budgets)
 
 if __name__ == '__main__':
     main()
