@@ -358,7 +358,7 @@ class DSA(object):
                 temp=i.predict(train).reshape(len(train),l.shape[-1])
             self.neuron_activate_train.append(temp.copy())
         self.neuron_activate_train=np.concatenate(self.neuron_activate_train,axis=1)
-        self.train_label = np.array(label)
+        self.train_label = np.argmax(np.array(label), axis=1)  # shape: (10000,)
 
     def fit(self,test,label,use_lower=False):
         self.neuron_activate_test=[]
@@ -374,9 +374,9 @@ class DSA(object):
         for test_sample,label_sample in zip(self.neuron_activate_test,label):
             # print("train features shape:", self.neuron_activate_train.shape) # (10000, 26)
             # print("label shape:", self.train_label.shape) # (10000, 10)
-            # print("bool mask shape:", (self.train_label == label_sample).shape) # (10000, 10)
             # print("bool mask sum:", np.sum(self.train_label == label_sample)) # 82056
-            # IndexError: boolean index did not match indexed array along dimension 1; dimension is 26 but corresponding boolean dimension is 10
+            if label_sample.ndim > 0:
+                label_sample = np.argmax(label_sample)
             dist_a = np.min(((self.neuron_activate_train[self.train_label == label_sample] - test_sample) ** 2).sum(axis=1))
             dist_b = np.min(((self.neuron_activate_train[self.train_label != label_sample] - test_sample) ** 2).sum(axis=1))
             test_score.append(dist_a/dist_b)
