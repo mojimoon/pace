@@ -57,7 +57,7 @@ def main():
             f.write('model,test_set,selection_metric,budget,accuracy\n')
 
     for m in model_names:
-        run_selection(m, 'mnist', testX, testy, ['pace'], budgets)
+        run_selection(m, 'mnist', testX, testy, ['nc'], budgets)
 
 if __name__ == '__main__':
     main()
