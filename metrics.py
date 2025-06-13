@@ -445,71 +445,28 @@ def geometric_diversity_select(X, y, model, budget, batch_size=128, layer_idx=-2
 \textbf{Standard Deviation (STD)} \cite{aghababaeyan2023black} (diversity-based, 2023) is a statistical measure of how far from the mean a group of data points is. For a test suite $X_s$, it is calculated as the norm of the standard deviation of each feature in the input set. Formally, $STD(X_s) = \Vert (\sqrt{\sum_{i=1}^{n}  \frac{V_{x_{i,j}} - \mu_j}{n}}, 1 \leq j \leq m) \Vert$, where $V_x$ is the feature matrix of the input set $X_s$ , $m$ is the number of features, $\mu_j$ is the mean value of feature $j$ in $V_x$.
 '''
 
-# def predict_activations(model, X, layer_names=None, batch_size=128):
-#     if layer_names is None:
-#         # select all Dense and Aactivation layers
-#         selected_layers = [l for l in model.layers if 'dense' in l.name or 'activation' in l.name]
-#     else:
-#         selected_layers = [l for l in model.layers if l.name in layer_names]
-#     intermediate_layer_model = Model(inputs=model.input, outputs=[l.output for l in selected_layers])
-#     acts = intermediate_layer_model.predict(X, batch_size=batch_size)
-#     if isinstance(acts, list):
-#         acts = [a.reshape((a.shape[0], -1)) for a in acts]
-#         activations = np.concatenate(acts, axis=1)
-#     else:
-#         activations = acts
-#     return activations
-
-# def neuron_coverage_select(X, y, model, budget, t=0.25, batch_size=128):
-#     activations = predict_activations(model, X, batch_size=batch_size)
-#     neuron_max = np.max(activations, axis=0) # shape (num_neurons,)
-#     covered = (neuron_max > t)
-#     nc = np.sum(covered) / covered.size
-
-#     idx = np.argsort(nc)[::-1]
-#     selected_idx = idx[:budget]
-#     return X[selected_idx], y[selected_idx], selected_idx
-
 def update_coverage(input_data, model, model_layer_dict, threshold):
-    from keras import backend as K
-    """
-    Updates model_layer_dict in-place, marking neurons as covered if their activation > threshold.
-
-    Args:
-        input_data: input sample, shape should be (1, h, w, c) or (1, n)
-        model: keras model
-        model_layer_dict: defaultdict(bool), keys are (layer_name, neuron_index)
-        threshold: float, activation threshold
-    """
     input_data = np.array(input_data)
-    # Collect the outputs of all non-input, non-flatten layers
-    layer_outputs = []
+    # 1. 找到所有需要统计的层
+    outputs = []
     layer_names = []
     for layer in model.layers:
         if 'flatten' in layer.name or 'input' in layer.name:
             continue
-        layer_outputs.append(layer.output)
+        outputs.append(layer.output)
         layer_names.append(layer.name)
-    # Build a function that returns all these outputs given model input
-    functor = K.function([model.input, K.learning_phase()], layer_outputs)
-    # Get activations for this input
-    outputs = functor([input_data, 0])  # 0 means test/inference mode
-    # For each layer, each neuron, update coverage if activation > threshold
-    for name, out in zip(layer_names, outputs):
-        # out shape: (1, ..., num_neurons)
-        # If output is (1, H, W, C), iterate over C
-        # If output is (1, N), iterate over N
-        # We always use the last dimension for channel/neuron index
+    # 2. 用Model构造子模型
+    feature_model = Model(inputs=model.input, outputs=outputs)
+    # 3. 得到激活
+    layer_outputs = feature_model.predict(input_data)
+    if not isinstance(layer_outputs, list):
+        layer_outputs = [layer_outputs]
+    # 4. 每层每神经元统计
+    for name, out in zip(layer_names, layer_outputs):
         neurons = out.shape[-1]
         for idx in range(neurons):
-            # activation for this neuron, flatten spatial dims if exist
             act = out[(0,) + (slice(None),) * (out.ndim - 2) + (idx,)]
-            # act is either a scalar or an array (e.g., HxW for conv)
-            # For conv: take max over spatial positions; for dense: just value
-            if isinstance(act, np.ndarray):
-                activation = np.max(act)
-            else:
-                activation = act
+            activation = np.max(act) if isinstance(act, np.ndarray) else act
             if activation > threshold:
                 model_layer_dict[(name, idx)] = True
 
