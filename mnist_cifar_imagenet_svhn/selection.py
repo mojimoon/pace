@@ -407,7 +407,7 @@ def get_mnist_emnist(**kwargs):
     x_test = np.load(image_path).astype('float32')
     y_test = np.load(label_path)
     y_test = keras.utils.to_categorical(y_test, num_classes=10)
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     return x_test, y_test
 
 

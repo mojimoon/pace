@@ -683,7 +683,7 @@ def ces_select(X, y, model, budget, batch_size=128, layer_name=None, interval_di
 
     # Determine layer to use
     if layer_name is None:
-        layer = model.layers[-3]
+        layer = model.layers[-2]
     else:
         layer = model.get_layer(layer_name)
     output_layer = K.function([model.input], [layer.output])
