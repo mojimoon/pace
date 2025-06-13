@@ -6,8 +6,8 @@ from sklearn import preprocessing
 import tensorflow as tf
 import numpy as np
 from keras.models import Model
-from keras.layers.convolutional import Conv2D
-from keras.layers.core import Dense
+# from keras.layers.convolutional import Conv2D
+# from keras.layers.core import Dense
 from scipy.stats import gaussian_kde
 from functools import reduce
 
@@ -76,9 +76,13 @@ def gini_select(X, y, model, budget, batch_size=128):
 def extract_layers(model):
     layers = []
     for l in model.layers:
-        if isinstance(l, Conv2D):
+        # if isinstance(l, Conv2D):
+        #     layers.append(('conv', l.output))
+        # elif isinstance(l, Dense):
+        #     layers.append(('dense', l.output))
+        if 'conv' in l.name:
             layers.append(('conv', l.output))
-        elif isinstance(l, Dense):
+        elif 'dense' in l.name:
             layers.append(('dense', l.output))
     return layers
 
@@ -334,6 +338,8 @@ class LSA(object):
             deltas = self.neuron_activate_train[:, self.mask] - test_sample  # shape (n_train, n_features)
             deltas = deltas.T  # gaussian_kde expects shape (n_features, n_samples)
             kde = gaussian_kde(deltas, bw_method='scott')
+            # numpy.linalg.LinAlgError: 18-th leading minor of the array is not positive definite
+            # kde.covariance += np.eye(kde.covariance.shape[0]) * 1e-6
             test_score.append(np.log(kde.evaluate(np.zeros((deltas.shape[0], 1)))[0]))
 
         return test_score
@@ -440,7 +446,7 @@ def geometric_diversity_select(X, y, model, budget, batch_size=128, layer_idx=-2
 def predict_activations(model, X, layer_names=None, batch_size=128):
     if layer_names is None:
         # select all Dense and Aactivation layers
-        selected_layers = [l for l in model.layers if isinstance(l, Dense) or 'activation' in l.name]
+        selected_layers = [l for l in model.layers if 'dense' in l.name or 'activation' in l.name]
     else:
         selected_layers = [l for l in model.layers if l.name in layer_names]
     intermediate_layer_model = Model(inputs=model.input, outputs=[l.output for l in selected_layers])
@@ -755,7 +761,7 @@ def select(X, y, model, budget, metric, batch_size=128, **kwargs):
         return ces_select(X, y, model, budget, batch_size=batch_size, layer_name=kwargs.get('layer_name', None), interval_dict=kwargs.get('interval_dict', {}), proba_dict=kwargs.get('proba_dict', {}))
     elif metric == 'mcp':
         return mcp_select(X, y, model, budget, batch_size=batch_size)
-    elif metric == 'deepest':
+    elif metric == 'est':
         return deepest(X, y, model, budget, batch_size=batch_size, occurrence_prob=kwargs.get('occurrence_prob', None))
     else:
         raise NotImplementedError(f"Metric '{metric}' is not implemented.")

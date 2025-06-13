@@ -271,3 +271,4 @@ mnist_cifar_imagenet_svhn/data/
 *.h5
 test/
 log/
+*.whl
