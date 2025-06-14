@@ -325,3 +325,17 @@ lenet5,mnist_emnist,dat,100,0.9700000286102295
 lenet5,mnist_emnist,dat,150,0.9599999785423279
 lenet5,mnist_emnist,dat,200,0.9649999737739563
 lenet5,mnist_label,kmnc,100,1.0
+lenet5,mnist_label,kmnc,150,0.9933333396911621
+lenet5,mnist_label,kmnc,200,1.0
+lenet5,mnist_label,nac,50,1.0
+lenet5,mnist_label,nac,100,1.0
+lenet5,mnist_label,nac,150,1.0
+lenet5,mnist_label,nac,200,1.0
+lenet5,mnist_label,lsa,50,1.0
+lenet5,mnist_label,lsa,100,1.0
+lenet5,mnist_label,lsa,150,1.0
+lenet5,mnist_label,lsa,200,1.0
+lenet5,mnist_label,dsa,50,1.0
+lenet5,mnist_label,dsa,100,1.0
+lenet5,mnist_label,dsa,150,0.9866666793823242
+lenet5,mnist_label,dsa,200,0.9900000095367432

@@ -748,13 +748,13 @@ def dr(X, y, model, budget, batch_size=128, KN=20):
     selected_idx = idx[:budget]
     return X[selected_idx], y[selected_idx], selected_idx
 
-def neuron_coverage_score(model, X, neuron_interval, neuron_proba, batch_size=128, layer_idx=-3):
+def neuron_coverage_score(model, X, neuron_interval, neuron_proba, num_neurons, batch_size=128, layer_idx=-3):
     """
     Calculate coverage-based entropy score for each sample in X.
     The score reflects how much each sample deviates from the reference neuron output distribution.
     """
     layer = model.layers[layer_idx]
-    num_neurons = neuron_proba[(layer.name, 0)].shape[0] if (layer.name, 0) in neuron_proba else 0
+    # num_neurons = neuron_proba[(layer.name, 0)].shape[0] if (layer.name, 0) in neuron_proba else 0
     coverage_scores = []
     # Precompute reference distribution to avoid recalculation
     ref_proba = {idx: neuron_proba[(layer.name, idx)] for idx in range(num_neurons)}
@@ -795,18 +795,19 @@ def build_neuron_tables_for_ces(model, X, divide=10, batch_size=128, layer_idx=-
     neuron_interval = {}
     neuron_proba = {}
     total_num = output.shape[0]
-    for idx in range(output.shape[1]):
+    num_neurons = output.shape[1]
+    for idx in range(num_neurons):
         lower, upper = np.min(output[:, idx]), np.max(output[:, idx])
         interval = np.linspace(lower, upper, divide + 1)
         hist, _ = np.histogram(output[:, idx], bins=interval)
         proba = hist / total_num
         neuron_interval[(layer.name, idx)] = interval
         neuron_proba[(layer.name, idx)] = proba
-    return neuron_interval, neuron_proba
+    return neuron_interval, neuron_proba, num_neurons
 
 def ces_select(X, y, model, budget, batch_size=128, layer_idx=-3, divide=10):
-    neuron_interval, neuron_proba = build_neuron_tables_for_ces(model, X, divide, batch_size, layer_idx)
-    coverage_scores = neuron_coverage_score(model, X, neuron_interval, neuron_proba, batch_size, layer_idx)
+    neuron_interval, neuron_proba, num_neurons = build_neuron_tables_for_ces(model, X, divide, batch_size, layer_idx)
+    coverage_scores = neuron_coverage_score(model, X, neuron_interval, neuron_proba, num_neurons, batch_size, layer_idx)
     idx = np.argsort(coverage_scores)[::-1]
     selected_idx = idx[:budget]
     return X[selected_idx], y[selected_idx], selected_idx
