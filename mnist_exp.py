@@ -55,8 +55,8 @@ def main():
         with open(out_csv, 'w') as f:
             f.write('model,test_set,selection_metric,budget,accuracy\n')
 
-    for m in model_names:
-        run_selection(m, 'mnist', testX, testy, metricList, budgets)
+    # for m in model_names:
+    #     run_selection(m, 'mnist', testX, testy, metricList, budgets)
     
     _X, _y = mnist.get_corrupted_mnist()
     run_selection('lenet5', 'mnist_c', _X, _y, metricList, budgets)
