@@ -13,6 +13,7 @@ import keras.layers as layers
 from scipy.stats import gaussian_kde
 from functools import reduce
 import copy
+import keras.backend as K
 
 def to_ordinal(y):
     if y.ndim == 1:
@@ -747,73 +748,68 @@ def dr(X, y, model, budget, batch_size=128, KN=20):
     selected_idx = idx[:budget]
     return X[selected_idx], y[selected_idx], selected_idx
 
-def ces_entropy(neuron_output, intervals, bench_proba):
+def neuron_coverage_score(model, X, neuron_interval, neuron_proba, batch_size=128, layer_idx=-3):
     """
-    Calculate cross-entropy-based sampling metric for each sample.
-    neuron_output: [batch, neurons] - activations for each sample.
-    intervals: dict with (layer_name, neuron_idx) -> interval array.
-    bench_proba: dict with (layer_name, neuron_idx) -> reference distribution over intervals.
-    Returns: [batch, neurons] array of entropy values.
+    Calculate coverage-based entropy score for each sample in X.
+    The score reflects how much each sample deviates from the reference neuron output distribution.
     """
-    batch_size, num_neurons = neuron_output.shape
-    entropies = np.zeros((batch_size, num_neurons))
-    for idx in range(num_neurons):
-        interval = intervals[idx]
-        bench_p = bench_proba[idx]
-        # Assign each output to its interval/bin
-        inds = np.digitize(neuron_output[:, idx], interval) - 1
-        inds = np.clip(inds, 0, len(bench_p)-1)
-        # Get the probability for the bin each sample falls into
-        p = bench_p[inds]
-        p = np.clip(p, 1e-8, 1.0)
-        entropies[:, idx] = -np.log(p)
-    return np.mean(entropies, axis=1)
+    layer = model.layers[layer_idx]
+    num_neurons = neuron_proba[(layer.name, 0)].shape[0] if (layer.name, 0) in neuron_proba else 0
+    coverage_scores = []
+    # Precompute reference distribution to avoid recalculation
+    ref_proba = {idx: neuron_proba[(layer.name, idx)] for idx in range(num_neurons)}
+    intervals = {idx: neuron_interval[(layer.name, idx)] for idx in range(num_neurons)}
+    for x_batch, _ in make_batch(X, np.zeros(X.shape[0]), batch_size):
+        # Get output for batch
+        func = K.function([model.input], [layer.output])
+        output = func([x_batch])[0].reshape(x_batch.shape[0], -1)
+        batch_scores = []
+        for i in range(output.shape[0]):
+            sample_scores = []
+            for idx in range(output.shape[1]):
+                # Place sample output into intervals
+                interval = intervals[idx]
+                ref = ref_proba[idx]
+                val = output[i, idx]
+                # Find which bin val lands in
+                bin_idx = np.searchsorted(interval, val, side='right') - 1
+                bin_idx = np.clip(bin_idx, 0, len(ref) - 1)
+                # Score: negative log-probability for that bin (i.e., "surprisal")
+                p = np.clip(ref[bin_idx], 1e-10, 1.0)
+                sample_scores.append(-np.log(p))
+            batch_scores.append(np.mean(sample_scores))  # Use mean surprisal as sample's coverage score
+        coverage_scores.extend(batch_scores)
+    return np.array(coverage_scores)
 
-def ces_select(X, y, model, budget, batch_size=128, layer_name=None, interval_dict=None, proba_dict=None):
+def build_neuron_tables_for_ces(model, X, divide=10, batch_size=128, layer_idx=-3):
     """
-    Cross-Entropy-based Sampling for DNN testing.
-    X: test data, shape [N, ...]
-    model: keras model
-    interval_dict: {(layer_name, neuron_idx): interval array}
-    proba_dict: {(layer_name, neuron_idx): reference proba array}
-    layer_name: name of the layer to extract neuron activations (default: third-to-last layer)
-    budget: number of samples to select
-    batch_size: batch size for processing
-    Returns: selected_X, selected_indices, entropy_scores
+    Build neuron interval and probability tables for reference.
     """
-    import keras.backend as K
+    layer = model.layers[layer_idx]
+    func = K.function([model.input], [layer.output])
+    outputs = []
+    for x_batch, _ in make_batch(X, np.zeros(X.shape[0]), batch_size):
+        out = func([x_batch])[0].reshape(x_batch.shape[0], -1)
+        outputs.append(out)
+    output = np.concatenate(outputs, axis=0)
+    neuron_interval = {}
+    neuron_proba = {}
+    total_num = output.shape[0]
+    for idx in range(output.shape[1]):
+        lower, upper = np.min(output[:, idx]), np.max(output[:, idx])
+        interval = np.linspace(lower, upper, divide + 1)
+        hist, _ = np.histogram(output[:, idx], bins=interval)
+        proba = hist / total_num
+        neuron_interval[(layer.name, idx)] = interval
+        neuron_proba[(layer.name, idx)] = proba
+    return neuron_interval, neuron_proba
 
-    # Determine layer to use
-    if layer_name is None:
-        layer = model.layers[-2]
-    else:
-        layer = model.get_layer(layer_name)
-    output_layer = K.function([model.input], [layer.output])
-
-    # Flatten output dims
-    def get_activations(X_batch):
-        out = output_layer([X_batch])[0]
-        return out.reshape(out.shape[0], -1)
-    
-    N = X.shape[0]
-    scores = []
-    indices = []
-    for i in range(0, N, batch_size):
-        X_batch = X[i:i+batch_size]
-        act = get_activations(X_batch)
-        # For this layer, gather intervals and probs for each neuron
-        num_neurons = act.shape[1]
-        intervals = [interval_dict[(layer.name, idx)] for idx in range(num_neurons)]
-        bench_proba = [proba_dict[(layer.name, idx)] for idx in range(num_neurons)]
-        # Compute scores
-        batch_scores = ces_entropy(act, intervals, bench_proba)
-        scores.append(batch_scores)
-        indices.extend(range(i, min(i+batch_size, N)))
-    scores = np.concatenate(scores)
-    indices = np.array(indices)
-    topk = np.argsort(scores)[::-1][:budget]
-    selected_indices = indices[topk]
-    return X[selected_indices], y[selected_indices], selected_indices, scores[topk]
+def ces_select(X, y, model, budget, batch_size=128, layer_idx=-3, divide=10):
+    neuron_interval, neuron_proba = build_neuron_tables_for_ces(model, X, divide, batch_size, layer_idx)
+    coverage_scores = neuron_coverage_score(model, X, neuron_interval, neuron_proba, batch_size, layer_idx)
+    idx = np.argsort(coverage_scores)[::-1]
+    selected_idx = idx[:budget]
+    return X[selected_idx], y[selected_idx], selected_idx
 
 def mcp_score(proba):
     """
@@ -910,7 +906,7 @@ def select(X, y, model, budget, metric, batch_size=128, **kwargs):
     elif metric == 'dr':
         return dr(X, y, model, budget, batch_size=batch_size, KN=kwargs.get('KN', 20))
     elif metric == 'ces':
-        return ces_select(X, y, model, budget, batch_size=batch_size, layer_name=kwargs.get('layer_name', None), interval_dict=kwargs.get('interval_dict', {}), proba_dict=kwargs.get('proba_dict', {}))
+        return ces_select(X, y, model, budget, batch_size=batch_size, layer_idx=kwargs.get('layer_idx', -3), divide=kwargs.get('divide', 10))
     elif metric == 'mcp':
         return mcp_select(X, y, model, budget, batch_size=batch_size)
     elif metric == 'est':
