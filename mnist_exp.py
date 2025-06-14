@@ -34,8 +34,7 @@ def run_selection(model_name, test_set, testX, testy, metricList, budgets):
 
     for m in metricList:
         for b in budgets:
-            # try:
-            if True:
+            try:
                 if m == 'dat':
                     n_test = testX.shape[0]
                     hybridX = np.concatenate((trainX[:int(n_test // 2)], testX[:int(n_test // 2)]), axis=0)
@@ -56,9 +55,9 @@ def run_selection(model_name, test_set, testX, testy, metricList, budgets):
                 np.savetxt(os.path.join(test_out_dir, 'y.txt'), onehot_to_int(selectedy).astype(int), fmt='%d')
                 with open(out_csv, 'a') as f:
                     f.write(f'{model_name},{test_set},{m},{b},{score[1]}\n')
-            # except Exception as e:
-            #     with open('log/mnist2.log', 'a') as f:
-            #         f.write(f'Error with model {model_name}, test_set {test_set}, metric {m}, budget {b}: {str(e)}\n')
+            except Exception as e:
+                with open('log/mnist2.log', 'a') as f:
+                    f.write(f'Error with model {model_name}, test_set {test_set}, metric {m}, budget {b}: {str(e)}\n')
 
 def main():
     if not os.path.exists(out_csv):

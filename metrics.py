@@ -97,7 +97,7 @@ def dat_ood_detector(X, y, model, budget, trainX, trainy, hybridX, hybridy, batc
         if isinstance(layer, layers.Dense):
             dense1 = layer.output
             break
-    if not dense1:
+    if dense1 is None:
         raise ValueError("No dense layer found in the model.")
     feat_mat = []
     for x_batch, y_batch in make_batch(trainX, trainy, batch_size):
