@@ -9,6 +9,7 @@ import numpy as np
 from keras.models import Model
 # from keras.layers.convolutional import Conv2D
 # from keras.layers.core import Dense
+import keras.layers as layers
 from scipy.stats import gaussian_kde
 from functools import reduce
 import copy
@@ -78,20 +79,22 @@ def gini_select(X, y, model, budget, batch_size=128):
 def extract_layers(model):
     layers = []
     for l in model.layers:
-        # if isinstance(l, Conv2D):
-        #     layers.append(('conv', l.output))
-        # elif isinstance(l, Dense):
-        #     layers.append(('dense', l.output))
-        if 'conv' in l.name:
+        if isinstance(l, layers.Conv2D):
             layers.append(('conv', l.output))
-        elif 'dense' in l.name:
+        elif isinstance(l, layers.Dense):
             layers.append(('dense', l.output))
+        # if 'conv' in l.name:
+        #     layers.append(('conv', l.output))
+        # elif 'dense' in l.name:
+        #     layers.append(('dense', l.output))
     return layers
 
 def dat_ood_detector(X, y, model, budget, trainX, trainy, hybridX, hybridy, batch_size=128, num_classes=None):
     dense1 = None
+    # print(model.summary())
     for layer in model.layers:
-        if 'dense' in layer.name:
+        # if 'dense' in layer.name:
+        if isinstance(layer, layers.Dense):
             dense1 = layer.output
             break
     if not dense1:
@@ -883,6 +886,8 @@ def select(X, y, model, budget, metric, batch_size=128, **kwargs):
         return entropy_select(X, y, model, budget, batch_size)
     elif metric == 'gini':
         return gini_select(X, y, model, budget, batch_size)
+    elif metric == 'dat':
+        return dat_ood_detector(X, y, model, budget, trainX=kwargs.get('trainX', None), trainy=kwargs.get('trainy', None), hybridX=kwargs.get('hybridX', None), hybridy=kwargs.get('hybridy', None), batch_size=batch_size, num_classes=kwargs.get('num_classes', None))
     elif metric == 'kmnc':
         return kmnc_select(X, y, model, budget, k_bins=kwargs.get('k_bins', 1000))
     elif metric == 'nac':

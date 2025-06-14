@@ -193,6 +193,14 @@ def get_mnist(**kwargs):
     Y_test = keras.utils.to_categorical(Y_test, 10)
     return X_test,Y_test
 
+def get_mnist_train(**kwargs):
+    (X_train, Y_train), (_, _) = mnist.load_data()
+    X_train = X_train.astype('float32')
+    X_train = X_train.reshape(X_train.shape[0], 28, 28, 1)
+    X_train /= 255
+    Y_train = keras.utils.to_categorical(Y_train, 10)
+    return X_train, Y_train
+
 
 def get_cifar10(**kwargs):
     from keras.datasets import cifar10
