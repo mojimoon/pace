@@ -9,7 +9,7 @@ import numpy as np
 from keras.models import Model
 # from keras.layers.convolutional import Conv2D
 # from keras.layers.core import Dense
-import keras.layers as layers
+import keras.layers as klayers
 from scipy.stats import gaussian_kde
 from functools import reduce
 import copy
@@ -80,9 +80,9 @@ def gini_select(X, y, model, budget, batch_size=128):
 def extract_layers(model):
     layers = []
     for l in model.layers:
-        if isinstance(l, layers.Conv2D):
+        if isinstance(l, klayers.Conv2D):
             layers.append(('conv', l.output))
-        elif isinstance(l, layers.Dense):
+        elif isinstance(l, klayers.Dense):
             layers.append(('dense', l.output))
         # if 'conv' in l.name:
         #     layers.append(('conv', l.output))

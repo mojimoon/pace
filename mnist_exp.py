@@ -65,7 +65,7 @@ def main():
         with open(out_csv, 'w') as f:
             f.write('model,test_set,selection_metric,budget,accuracy\n')
     
-    metricList = ['ces']
+    metricList = ['kmnc', 'nac', 'lsa', 'dsa']
 
     for m in model_names:
         run_selection(m, 'mnist', testX, testy, metricList, budgets)
