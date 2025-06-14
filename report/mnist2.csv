@@ -417,3 +417,4 @@ lenet5,mnist_emnist,nac,150,1.0
 lenet5,mnist_emnist,nac,200,0.0
 lenet5,mnist_emnist,lsa,50,1.0
 lenet5,mnist_emnist,lsa,100,0.9900000095367432
+lenet5,mnist_emnist,lsa,150,0.9933333396911621
