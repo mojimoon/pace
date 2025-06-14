@@ -73,7 +73,7 @@ def gini_select(X, y, model, budget, batch_size=128):
     scores = np.concatenate(raw)
     idx = np.argsort(scores)[::-1]
     selected_idx = idx[:budget]
-    return X[selected_idx], y[selected_idx], selected_idx
+    return X[selected_idx], y[selected_idx], selected_idx, scores
 
 def extract_layers(model):
     layers = []
@@ -87,6 +87,102 @@ def extract_layers(model):
         elif 'dense' in l.name:
             layers.append(('dense', l.output))
     return layers
+
+def dat_ood_detector(X, y, model, budget, trainX, trainy, hybridX, hybridy, batch_size=128, num_classes=None):
+    dense1 = None
+    for layer in model.layers:
+        if 'dense' in layer.name:
+            dense1 = layer.output
+            break
+    if not dense1:
+        raise ValueError("No dense layer found in the model.")
+    feat_mat = []
+    for x_batch, y_batch in make_batch(trainX, trainy, batch_size):
+        feat = Model(inputs=model.input, outputs=dense1).predict(x_batch)
+        feat_mat.append(feat)
+    feat_mat = np.vstack(feat_mat)
+    feat_mat_can = []
+    for x_batch, y_batch in make_batch(X, y, batch_size):
+        feat = Model(inputs=model.input, outputs=dense1).predict(x_batch)
+        feat_mat_can.append(feat)
+    feat_mat_can = np.vstack(feat_mat_can)
+
+    center = np.mean(feat_mat, axis=0)
+    dist = np.sum((feat_mat - center) ** 2, axis=1)
+    dist_sort = np.sort(dist)
+    threshold = dist_sort[int(0.95 * len(dist_sort))]
+    dist_can = np.sum((feat_mat_can - center) ** 2, axis=1)
+    canX_id, cany_id = X[dist_can <= threshold], y[dist_can <= threshold]
+    canX_ood, cany_ood = X[dist_can > threshold], y[dist_can > threshold]
+
+    budget_ratio = budget / len(X)
+    id_select_num = int(len(canX_id) * budget_ratio)
+    ood_select_num = budget - id_select_num
+    para_there = 0.5
+    tot_ood_size = len(canX_ood)
+    if id_select_num > ood_select_num:
+        if id_select_num > tot_ood_size:
+            ood_select_num = tot_ood_size
+            id_select_num = int(budget - ood_select_num)
+        else:
+            id_select_num, ood_select_num = ood_select_num, id_select_num
+    if id_select_num > int(para_there * budget):
+        id_select_num = int(para_there * budget)
+        ood_select_num = budget - id_select_num
+        if ood_select_num > tot_ood_size:
+            ood_select_num = tot_ood_size
+            id_select_num = int(budget - ood_select_num)
+    
+    _, _, _, id_scores = gini_select(canX_id, cany_id, model, id_select_num, batch_size)
+    idx = np.argsort(id_scores)[::-1]
+    id_select_idx = idx[:id_select_num]
+    selected_canX_id = canX_id[id_select_idx]
+    selected_cany_id = cany_id[id_select_idx]
+
+    candidate_prediction_label = model.predict(X, batch_size=batch_size)
+    reference_prediction_label = model.predict(hybridX, batch_size=batch_size)
+    reference_labels = []
+    if num_classes is None: # y is one-hot
+        num_classes = y.shape[1] if y.ndim > 1 else np.max(y) + 1
+    for i in range(num_classes):
+        label_num = len(np.where(reference_prediction_label == i)[0])
+        reference_labels.append(label_num)
+    reference_labels = np.asarray(reference_labels)
+    s_ratio = len(X) / budget
+    reference_labels = reference_labels / s_ratio
+    ood_part_index = np.where((dist_can > threshold) == True)[0]
+
+    label_list = []
+    index_list = []
+    if ood_select_num == 0:
+        selected_data = selected_canX_id
+        selected_label = selected_cany_id
+        selected_indices = id_select_idx
+    else:
+        for _ in range(1000):
+            ood_select_index = np.random.choice(ood_part_index, ood_select_num, replace=False)
+            this_labels = candidate_prediction_label[ood_select_index.astype(np.int)]
+            single_labels = []
+            for i in range(num_classes):
+                label_num = len(np.where(this_labels == i)[0])
+                single_labels.append(label_num)
+            index_list.append(ood_select_index)
+            label_list.append(single_labels)
+        index_list = np.asarray(index_list)
+        label_list = np.asarray(label_list)
+
+        label_minus = np.abs(label_list - reference_labels)
+        var_list = np.sum(label_minus, axis=1)
+        var_list_order = np.argsort(var_list)
+
+        ood_select_index = index_list[var_list_order[0]]
+        selected_canX_ood = canX_ood[ood_select_index]
+        selected_cany_ood = cany_ood[ood_select_index]
+        selected_data = np.concatenate((selected_canX_id, selected_canX_ood), axis=0)
+        selected_label = np.concatenate((selected_cany_id, selected_cany_ood), axis=0)
+        selected_indices = np.concatenate((id_select_idx, ood_select_index), axis=0)
+
+    return selected_data, selected_label, selected_indices
 
 class kmnc(object):
     def __init__(self,train,input,layers,k_bins=1000):
