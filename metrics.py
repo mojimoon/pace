@@ -162,14 +162,17 @@ def dat_ood_detector(X, y, model, budget, trainX, trainy, hybridX, hybridy, batc
         selected_label = selected_cany_id
         selected_indices = id_select_idx
     else:
+        num_ood = canX_ood.shape[0]
+        ood_local_indices = np.arange(num_ood)
+
         for _ in range(1000):
-            ood_select_index = np.random.choice(ood_part_index, ood_select_num, replace=False)
-            this_labels = candidate_prediction_label[ood_select_index.astype(np.int)]
+            chosen_local_idx = np.random.choice(ood_local_indices, ood_select_num, replace=False)
+            this_labels = candidate_prediction_label[ood_part_index[chosen_local_idx]]  # 用全局索引
             single_labels = []
             for i in range(num_classes):
                 label_num = len(np.where(this_labels == i)[0])
                 single_labels.append(label_num)
-            index_list.append(ood_select_index)
+            index_list.append(chosen_local_idx)
             label_list.append(single_labels)
         index_list = np.asarray(index_list)
         label_list = np.asarray(label_list)
@@ -183,7 +186,7 @@ def dat_ood_detector(X, y, model, budget, trainX, trainy, hybridX, hybridy, batc
         selected_cany_ood = cany_ood[ood_select_index]
         selected_data = np.concatenate((selected_canX_id, selected_canX_ood), axis=0)
         selected_label = np.concatenate((selected_cany_id, selected_cany_ood), axis=0)
-        selected_indices = np.concatenate((id_select_idx, ood_select_index), axis=0)
+        selected_indices = np.concatenate((id_select_idx, ood_part_index[ood_select_index]), axis=0)
 
     return selected_data, selected_label, selected_indices
 
