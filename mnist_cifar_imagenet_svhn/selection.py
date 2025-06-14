@@ -16,6 +16,8 @@ import argparse
 from keras.applications import vgg19,resnet50
 from mnist_cifar_imagenet_svhn.tools.utils import NeuronCoverage,TopKNeuronCoverage
 
+basedir = os.path.dirname(os.path.abspath(__file__))
+
 '''
 usage: python -u -m mnist_cifar_imagenet_svhn.selection --exp_id=lenet1 
 env: pace
@@ -511,8 +513,6 @@ def get_acc(exp_id):
     return acc_dict[exp_id]
 
 if __name__=="__main__":
-
-    basedir = os.path.abspath(os.path.dirname(__file__))
 
     """Parser of command args"""
     parse = argparse.ArgumentParser()
