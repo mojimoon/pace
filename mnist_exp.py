@@ -120,7 +120,7 @@ def rmse(acc, acc_hat, randomness=True):
 
 def run_evaluation(model_name, test_set, metricList, budgets, fullX, fully, originalX, originaly):
     model = mnist.get_model(model_name)
-    full_y_int = onehot_to_int(fully)  # (n_samples,)
+    full_y_int = onehot_to_int(fully)  # (n_samples, 28, 28, 1)
     full_pred = model.predict(fullX, verbose=0)  # (n_samples, 10)
     full_pred_int = np.argmax(full_pred, axis=1)  # (n_samples,)
     right = (full_pred_int == full_y_int).astype(int)
@@ -135,8 +135,8 @@ def run_evaluation(model_name, test_set, metricList, budgets, fullX, fully, orig
                 if not os.path.exists(test_out_dir):
                     raise FileNotFoundError(f"Test output directory {test_out_dir} does not exist.")
                 X_id = np.loadtxt(os.path.join(test_out_dir, 'X.txt'), dtype=int)  # (n_selected,)
-                sort = np.zeros_like(right)
-                sort[X_id] = np.arange(1, len(X_id) + 1)
+                sort = np.zeros(fullX.shape[0], dtype=int)
+                sort[X_id] = np.arange(1, b + 1)
 
                 apfd_score = apfd(right, sort)
                 apfd_from_order_score = apfd_from_order(is_fault, X_id)
@@ -167,12 +167,13 @@ def run_evaluation(model_name, test_set, metricList, budgets, fullX, fully, orig
                     'acc_improvement': acc_improvement
                 })
             except Exception as e:
-                print(f"Error processing model {model_name}, test_set {test_set}, metric {m}, budget {b}: {str(e)}")
+                with open('log/mnist2_eval.log', 'a') as f:
+                    f.write(f'Error with model {model_name}, test_set {test_set}, metric {m}, budget {b}: {str(e)}\n')
     
     return results
 
 def evaluate():
-    eval_csv = 'report/mnist2_eval.csv'
+    eval_csv = 'report/mnist_eval.csv'
     vals = []
     originalX, originaly = testX, testy
 
@@ -195,4 +196,5 @@ def evaluate():
         df.to_csv(eval_csv, mode='a', header=False, index=False)
     
 if __name__ == '__main__':
-    main()
+    # main()
+    evaluate()

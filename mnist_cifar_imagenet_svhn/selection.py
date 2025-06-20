@@ -9,7 +9,7 @@ import random
 from keras.datasets import mnist
 from numpy import arange
 
-from selection_metrics import *
+# from selection_metrics import *
 
 import argparse
 
