@@ -91,14 +91,14 @@ def main():
     _X, _y = mnist.get_mnist_emnist()
     run_selection('lenet5', 'mnist_emnist', _X, _y, metricList, budgets)
 
-def apfd(correct, order):
-    assert correct.ndim == 1, "correct must be a one-dimensional array"
-    ordered_correct = correct[order]
-    fault_indexes = np.where(ordered_correct == 1)[0]
-    k = np.count_nonzero(correct)
-    n = correct.shape[0]
-    sum_of_fault_orders = np.sum(fault_indexes + 1)
-    return 1 - (sum_of_fault_orders / (k * n)) + (1 / (2 * n))
+def apfd(right, sort):
+    length = np.sum(sort != 0)
+    if length != len(sort):
+        sort[sort == 0] = np.random.permutation(len(sort) - length) + length + 1
+    sum_all = np.sum(sort[right != 1])
+    n = len(sort)
+    m = np.sum(right == 0)
+    return 1 - float(sum_all) / (n * m) + 1. / (2 * n)
 
 def apfd_from_order(is_fault, index_order):
     assert is_fault.ndim == 1, "at the moment, only unique faults are supported"
@@ -116,22 +116,47 @@ def rmse(acc, acc_hat, randomness=True):
     else:
         return np.abs(acc_hat - acc)
 
-def run_evaluation(model_name, test_set, selection_metric, budget, fullX, fully):
+def run_evaluation(model_name, test_set, selection_metric, budget, fullX, fully, originalX, originaly):
     model = mnist.get_model(model_name)
     test_out_dir = os.path.join(test_dir, test_set, model_name, selection_metric, str(budget))
     if not os.path.exists(test_out_dir):
         raise FileNotFoundError(f"Test output directory {test_out_dir} does not exist.")
-    X_id = np.loadtxt(os.path.join(test_out_dir, 'X.txt'), dtype=int) # (n_selected,)
-    y_int = np.loadtxt(os.path.join(test_out_dir, 'y.txt'), dtype=int) # (n_selected,)
+    X_id = np.loadtxt(os.path.join(test_out_dir, 'X.txt'), dtype=int) # (n_selected, 28, 28, 1)
+    # y_int = np.loadtxt(os.path.join(test_out_dir, 'y.txt'), dtype=int) # (n_selected,)
+    full_y_int = onehot_to_int(fully) # (n_samples,)
     full_pred = model.predict(fullX, verbose=0) # (n_samples, 10)
-    
+    full_pred_int = np.argmax(full_pred, axis=1) # (n_samples,)
+    right = (full_pred_int == full_y_int).astype(int)
+    is_fault = (full_pred_int != full_y_int).astype(int)
+    sort = np.zeros_like(right)
+    sort[X_id] = np.arange(1, len(X_id) + 1)
+
+    apfd_score = apfd(right, sort)
+    apfd_from_order_score = apfd_from_order(is_fault, X_id)
+    acc_hat = np.mean(full_pred_int[X_id] == full_y_int[X_id])
+    acc = np.mean(full_pred_int == full_y_int)
+    rmse_score = np.abs(acc_hat - acc)
+
+    # type 2 retraining = original test set + selected set
+    concatenatedX = np.concatenate((originalX, fullX[X_id]), axis=0)
+    concatenatedy = np.concatenate((originaly, fully[X_id]), axis=0)
+    model.fit(concatenatedX, concatenatedy, epochs=3, batch_size=128, verbose=0)
+    retrain_pred = model.predict(fullX, verbose=0)
+    retrain_pred_int = np.argmax(retrain_pred, axis=1)
+    retrain_acc = np.mean(retrain_pred_int == full_y_int)
+    acc_improvement = retrain_acc - acc
+    return {
+        'apfd': apfd_score,
+        'apfd_from_order': apfd_from_order_score,
+        'acc_hat': acc_hat,
+        'acc': acc,
+        'rmse': rmse_score,
+        'retrain_acc': retrain_acc,
+        'acc_improvement': acc_improvement
+    }
 
 def evaluate():
     eval_csv = 'report/mnist2_eval.csv'
-    if os.path.exists(eval_csv):
-        df = pd.read_csv(eval_csv)
-    else:
-        df = pd.DataFrame(columns=['model', 'test_set', 'selection_metric', 'budget', 'apfd', 'rmse'])
     
     for m in model_names:
     
