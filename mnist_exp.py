@@ -116,50 +116,80 @@ def rmse(acc, acc_hat, randomness=True):
     else:
         return np.abs(acc_hat - acc)
 
-def run_evaluation(model_name, test_set, selection_metric, budget, fullX, fully, originalX, originaly):
+# improvement: full_pred and acc can be computed once for all metrics
+
+def run_evaluation(model_name, test_set, metricList, budgets, fullX, fully, originalX, originaly):
     model = mnist.get_model(model_name)
-    test_out_dir = os.path.join(test_dir, test_set, model_name, selection_metric, str(budget))
-    if not os.path.exists(test_out_dir):
-        raise FileNotFoundError(f"Test output directory {test_out_dir} does not exist.")
-    X_id = np.loadtxt(os.path.join(test_out_dir, 'X.txt'), dtype=int) # (n_selected, 28, 28, 1)
-    # y_int = np.loadtxt(os.path.join(test_out_dir, 'y.txt'), dtype=int) # (n_selected,)
-    full_y_int = onehot_to_int(fully) # (n_samples,)
-    full_pred = model.predict(fullX, verbose=0) # (n_samples, 10)
-    full_pred_int = np.argmax(full_pred, axis=1) # (n_samples,)
+    full_y_int = onehot_to_int(fully)  # (n_samples,)
+    full_pred = model.predict(fullX, verbose=0)  # (n_samples, 10)
+    full_pred_int = np.argmax(full_pred, axis=1)  # (n_samples,)
     right = (full_pred_int == full_y_int).astype(int)
     is_fault = (full_pred_int != full_y_int).astype(int)
-    sort = np.zeros_like(right)
-    sort[X_id] = np.arange(1, len(X_id) + 1)
 
-    apfd_score = apfd(right, sort)
-    apfd_from_order_score = apfd_from_order(is_fault, X_id)
-    acc_hat = np.mean(full_pred_int[X_id] == full_y_int[X_id])
-    acc = np.mean(full_pred_int == full_y_int)
-    rmse_score = np.abs(acc_hat - acc)
+    results = []
+    
+    for m in metricList:
+        for b in budgets:
+            test_out_dir = os.path.join(test_dir, test_set, model_name, m, str(b))
+            if not os.path.exists(test_out_dir):
+                raise FileNotFoundError(f"Test output directory {test_out_dir} does not exist.")
+            X_id = np.loadtxt(os.path.join(test_out_dir, 'X.txt'), dtype=int)  # (n_selected,)
+            sort = np.zeros_like(right)
+            sort[X_id] = np.arange(1, len(X_id) + 1)
 
-    # type 2 retraining = original test set + selected set
-    concatenatedX = np.concatenate((originalX, fullX[X_id]), axis=0)
-    concatenatedy = np.concatenate((originaly, fully[X_id]), axis=0)
-    model.fit(concatenatedX, concatenatedy, epochs=3, batch_size=128, verbose=0)
-    retrain_pred = model.predict(fullX, verbose=0)
-    retrain_pred_int = np.argmax(retrain_pred, axis=1)
-    retrain_acc = np.mean(retrain_pred_int == full_y_int)
-    acc_improvement = retrain_acc - acc
-    return {
-        'apfd': apfd_score,
-        'apfd_from_order': apfd_from_order_score,
-        'acc_hat': acc_hat,
-        'acc': acc,
-        'rmse': rmse_score,
-        'retrain_acc': retrain_acc,
-        'acc_improvement': acc_improvement
-    }
+            apfd_score = apfd(right, sort)
+            apfd_from_order_score = apfd_from_order(is_fault, X_id)
+            acc_hat = np.mean(full_pred_int[X_id] == full_y_int[X_id])
+            acc = np.mean(full_pred_int == full_y_int)
+            rmse_score = np.abs(acc_hat - acc)
+
+            # Type 2 retraining
+            concatenatedX = np.concatenate((originalX, fullX[X_id]), axis=0)
+            concatenatedy = np.concatenate((originaly, fully[X_id]), axis=0)
+            model.fit(concatenatedX, concatenatedy, epochs=3, batch_size=128, verbose=0)
+            retrain_pred = model.predict(fullX, verbose=0)
+            retrain_pred_int = np.argmax(retrain_pred, axis=1)
+            retrain_acc = np.mean(retrain_pred_int == full_y_int)
+            acc_improvement = retrain_acc - acc
+
+            results.append({
+                'model': model_name,
+                'test_set': test_set,
+                'selection_metric': m,
+                'budget': b,
+                'apfd': apfd_score,
+                'apfd_from_order': apfd_from_order_score,
+                'acc_hat': acc_hat,
+                'acc': acc,
+                'rmse': rmse_score,
+                'retrain_acc': retrain_acc,
+                'acc_improvement': acc_improvement
+            })
+    
+    return results
 
 def evaluate():
     eval_csv = 'report/mnist2_eval.csv'
-    
-    for m in model_names:
-    
+    vals = []
+    originalX, originaly = testX, testy
 
+    for m in model_names:
+        vals.extend(run_evaluation(m, 'mnist', metricList, budgets, testX, testy, originalX, originaly))
+    
+    _X, _y = mnist.get_corrupted_mnist()
+    vals.extend(run_evaluation('lenet5', 'mnist_c', metricList, budgets, _X, _y, originalX, originaly))
+    _X, _y = mnist.get_adv_mnist()
+    vals.extend(run_evaluation('lenet5', 'mnist_adv', metricList, budgets, _X, _y, originalX, originaly))
+    _X, _y = mnist.get_label_mnist()
+    vals.extend(run_evaluation('lenet5', 'mnist_label', metricList, budgets, _X, _y, originalX, originaly))
+    _X, _y = mnist.get_mnist_emnist()
+    vals.extend(run_evaluation('lenet5', 'mnist_emnist', metricList, budgets, _X, _y, originalX, originaly))
+
+    df = pd.DataFrame(vals)
+    if not os.path.exists(eval_csv):
+        df.to_csv(eval_csv, index=False)
+    else:
+        df.to_csv(eval_csv, mode='a', header=False, index=False)
+    
 if __name__ == '__main__':
     main()
