@@ -130,41 +130,44 @@ def run_evaluation(model_name, test_set, metricList, budgets, fullX, fully, orig
     
     for m in metricList:
         for b in budgets:
-            test_out_dir = os.path.join(test_dir, test_set, model_name, m, str(b))
-            if not os.path.exists(test_out_dir):
-                raise FileNotFoundError(f"Test output directory {test_out_dir} does not exist.")
-            X_id = np.loadtxt(os.path.join(test_out_dir, 'X.txt'), dtype=int)  # (n_selected,)
-            sort = np.zeros_like(right)
-            sort[X_id] = np.arange(1, len(X_id) + 1)
+            try:
+                test_out_dir = os.path.join(test_dir, test_set, model_name, m, str(b))
+                if not os.path.exists(test_out_dir):
+                    raise FileNotFoundError(f"Test output directory {test_out_dir} does not exist.")
+                X_id = np.loadtxt(os.path.join(test_out_dir, 'X.txt'), dtype=int)  # (n_selected,)
+                sort = np.zeros_like(right)
+                sort[X_id] = np.arange(1, len(X_id) + 1)
 
-            apfd_score = apfd(right, sort)
-            apfd_from_order_score = apfd_from_order(is_fault, X_id)
-            acc_hat = np.mean(full_pred_int[X_id] == full_y_int[X_id])
-            acc = np.mean(full_pred_int == full_y_int)
-            rmse_score = np.abs(acc_hat - acc)
+                apfd_score = apfd(right, sort)
+                apfd_from_order_score = apfd_from_order(is_fault, X_id)
+                acc_hat = np.mean(full_pred_int[X_id] == full_y_int[X_id])
+                acc = np.mean(full_pred_int == full_y_int)
+                rmse_score = np.abs(acc_hat - acc)
 
-            # Type 2 retraining
-            concatenatedX = np.concatenate((originalX, fullX[X_id]), axis=0)
-            concatenatedy = np.concatenate((originaly, fully[X_id]), axis=0)
-            model.fit(concatenatedX, concatenatedy, epochs=3, batch_size=128, verbose=0)
-            retrain_pred = model.predict(fullX, verbose=0)
-            retrain_pred_int = np.argmax(retrain_pred, axis=1)
-            retrain_acc = np.mean(retrain_pred_int == full_y_int)
-            acc_improvement = retrain_acc - acc
+                # Type 2 retraining
+                concatenatedX = np.concatenate((originalX, fullX[X_id]), axis=0)
+                concatenatedy = np.concatenate((originaly, fully[X_id]), axis=0)
+                model.fit(concatenatedX, concatenatedy, epochs=3, batch_size=128, verbose=0)
+                retrain_pred = model.predict(fullX, verbose=0)
+                retrain_pred_int = np.argmax(retrain_pred, axis=1)
+                retrain_acc = np.mean(retrain_pred_int == full_y_int)
+                acc_improvement = retrain_acc - acc
 
-            results.append({
-                'model': model_name,
-                'test_set': test_set,
-                'selection_metric': m,
-                'budget': b,
-                'apfd': apfd_score,
-                'apfd_from_order': apfd_from_order_score,
-                'acc_hat': acc_hat,
-                'acc': acc,
-                'rmse': rmse_score,
-                'retrain_acc': retrain_acc,
-                'acc_improvement': acc_improvement
-            })
+                results.append({
+                    'model': model_name,
+                    'test_set': test_set,
+                    'selection_metric': m,
+                    'budget': b,
+                    'apfd': apfd_score,
+                    'apfd_from_order': apfd_from_order_score,
+                    'acc_hat': acc_hat,
+                    'acc': acc,
+                    'rmse': rmse_score,
+                    'retrain_acc': retrain_acc,
+                    'acc_improvement': acc_improvement
+                })
+            except Exception as e:
+                print(f"Error processing model {model_name}, test_set {test_set}, metric {m}, budget {b}: {str(e)}")
     
     return results
 
