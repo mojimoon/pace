@@ -2,6 +2,7 @@ import mnist_cifar_imagenet_svhn.selection as mnist
 import metrics
 import os
 import numpy as np
+import pandas as pd
 # import tensorflow as tf
 
 model_names = ['lenet1', 'lenet4', 'lenet5']
@@ -20,6 +21,14 @@ def onehot_to_int(y):
     if y.ndim == 2 and y.shape[1] > 1:
         return np.argmax(y, axis=1)
     elif y.ndim == 1:
+        return y
+    else:
+        raise ValueError("Input must be a one-hot encoded array or a single-dimensional array.")
+
+def int_to_onehot(y, num_classes=10):
+    if y.ndim == 1:
+        return np.eye(num_classes)[y]
+    elif y.ndim == 2 and y.shape[1] == num_classes:
         return y
     else:
         raise ValueError("Input must be a one-hot encoded array or a single-dimensional array.")
@@ -65,7 +74,7 @@ def main():
         with open(out_csv, 'w') as f:
             f.write('model,test_set,selection_metric,budget,accuracy\n')
     
-    metricList = ['kmnc', 'nac', 'lsa', 'dsa']
+    # metricList = ['kmnc', 'nac', 'lsa', 'dsa']
 
     for m in model_names:
         run_selection(m, 'mnist', testX, testy, metricList, budgets)
@@ -81,6 +90,51 @@ def main():
 
     _X, _y = mnist.get_mnist_emnist()
     run_selection('lenet5', 'mnist_emnist', _X, _y, metricList, budgets)
+
+def apfd(correct, order):
+    assert correct.ndim == 1, "correct must be a one-dimensional array"
+    ordered_correct = correct[order]
+    fault_indexes = np.where(ordered_correct == 1)[0]
+    k = np.count_nonzero(correct)
+    n = correct.shape[0]
+    sum_of_fault_orders = np.sum(fault_indexes + 1)
+    return 1 - (sum_of_fault_orders / (k * n)) + (1 / (2 * n))
+
+def apfd_from_order(is_fault, index_order):
+    assert is_fault.ndim == 1, "at the moment, only unique faults are supported"
+    ordered_faults = is_fault[index_order]
+    fault_indexes = np.where(ordered_faults == 1)[0]
+    k = np.count_nonzero(is_fault)
+    n = is_fault.shape[0]
+    sum_of_fault_orders = np.sum(fault_indexes + 1)
+    return 1 - (sum_of_fault_orders / (k * n)) + (1 / (2 * n))
+
+def rmse(acc, acc_hat, randomness=True):
+    if randomness:
+        N = len(acc)
+        return np.sqrt(1 / N * np.sum((acc_hat - acc) ** 2, axis=1))
+    else:
+        return np.abs(acc_hat - acc)
+
+def run_evaluation(model_name, test_set, selection_metric, budget, fullX, fully):
+    model = mnist.get_model(model_name)
+    test_out_dir = os.path.join(test_dir, test_set, model_name, selection_metric, str(budget))
+    if not os.path.exists(test_out_dir):
+        raise FileNotFoundError(f"Test output directory {test_out_dir} does not exist.")
+    X_id = np.loadtxt(os.path.join(test_out_dir, 'X.txt'), dtype=int) # (n_selected,)
+    y_int = np.loadtxt(os.path.join(test_out_dir, 'y.txt'), dtype=int) # (n_selected,)
+    full_pred = model.predict(fullX, verbose=0) # (n_samples, 10)
+    
+
+def evaluate():
+    eval_csv = 'report/mnist2_eval.csv'
+    if os.path.exists(eval_csv):
+        df = pd.read_csv(eval_csv)
+    else:
+        df = pd.DataFrame(columns=['model', 'test_set', 'selection_metric', 'budget', 'apfd', 'rmse'])
+    
+    for m in model_names:
+    
 
 if __name__ == '__main__':
     main()
