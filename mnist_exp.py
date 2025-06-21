@@ -74,7 +74,7 @@ def main():
         with open(out_csv, 'w') as f:
             f.write('model,test_set,selection_metric,budget,accuracy\n')
     
-    metricList = ['std']
+    metricList = ['nac']
 
     for m in model_names:
         run_selection(m, 'mnist', testX, testy, metricList, budgets)
@@ -198,5 +198,5 @@ def evaluate():
         df.to_csv(eval_csv, mode='a', header=False, index=False)
     
 if __name__ == '__main__':
-    main()
-    # evaluate()
+    # main()
+    evaluate()
