@@ -385,7 +385,7 @@ def nac_select(X, y, model, budget, t=0.5):
     layers = extract_layers(model)
     nac_model = nac(test=X, input=model.input, layers=layers, t=t)
     nac_model.fit()
-    ranked_indices = nac_model.rank_fast(X)
+    ranked_indices = nac_model.rank_2(X)
     selected_indices = ranked_indices[:budget]
     return X[selected_indices], y[selected_indices], selected_indices
 
@@ -626,9 +626,8 @@ def std_select(X, y, budget):
         X_flat = X.reshape(X.shape[0], -1)
     else:
         X_flat = X
-    std_vec = np.std(X_flat, axis=0)
-    std_norm = np.linalg.norm(std_vec)
-    idx = np.argsort(std_norm)[::-1]
+    sample_std = np.std(X_flat, axis=1)
+    idx = np.argsort(sample_std)[::-1]
     selected_idx = idx[:budget]
     return X[selected_idx], y[selected_idx], selected_idx
 
