@@ -74,7 +74,7 @@ def main():
         with open(out_csv, 'w') as f:
             f.write('model,test_set,selection_metric,budget,accuracy\n')
     
-    # metricList = ['kmnc', 'nac', 'lsa', 'dsa']
+    metricList = ['nac', 'std']
 
     for m in model_names:
         run_selection(m, 'mnist', testX, testy, metricList, budgets)
@@ -130,7 +130,8 @@ def run_evaluation(model_name, test_set, metricList, budgets, fullX, fully, orig
     
     for m in metricList:
         for b in budgets:
-            try:
+            # try:
+            if True:
                 test_out_dir = os.path.join(test_dir, test_set, model_name, m, str(b))
                 if not os.path.exists(test_out_dir):
                     raise FileNotFoundError(f"Test output directory {test_out_dir} does not exist.")
@@ -166,9 +167,9 @@ def run_evaluation(model_name, test_set, metricList, budgets, fullX, fully, orig
                     'retrain_acc': retrain_acc,
                     'acc_improvement': acc_improvement
                 })
-            except Exception as e:
-                with open('log/mnist2_eval.log', 'a') as f:
-                    f.write(f'Error with model {model_name}, test_set {test_set}, metric {m}, budget {b}: {str(e)}\n')
+            # except Exception as e:
+            #     with open('log/mnist2_eval.log', 'a') as f:
+            #         f.write(f'Error with model {model_name}, test_set {test_set}, metric {m}, budget {b}: {str(e)}\n')
     
     return results
 
@@ -176,6 +177,7 @@ def evaluate():
     eval_csv = 'report/mnist_eval.csv'
     vals = []
     originalX, originaly = testX, testy
+    metricList = ['nac', 'std']
 
     for m in model_names:
         vals.extend(run_evaluation(m, 'mnist', metricList, budgets, testX, testy, originalX, originaly))
@@ -196,5 +198,5 @@ def evaluate():
         df.to_csv(eval_csv, mode='a', header=False, index=False)
     
 if __name__ == '__main__':
-    # main()
-    evaluate()
+    main()
+    # evaluate()
