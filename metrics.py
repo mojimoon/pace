@@ -75,6 +75,16 @@ def gini_select(X, y, model, budget, batch_size=128):
     scores = np.concatenate(raw)
     idx = np.argsort(scores)[::-1]
     selected_idx = idx[:budget]
+    return X[selected_idx], y[selected_idx], selected_idx
+
+def gini_select_score(X, y, model, budget, batch_size=128):
+    raw = []
+    for x_batch, y_batch in make_batch(X, y, batch_size):
+        proba = model.predict(x_batch)
+        raw.append(gini(proba))
+    scores = np.concatenate(raw)
+    idx = np.argsort(scores)[::-1]
+    selected_idx = idx[:budget]
     return X[selected_idx], y[selected_idx], selected_idx, scores
 
 def extract_layers(model):
@@ -137,7 +147,7 @@ def dat_ood_detector(X, y, model, budget, trainX, trainy, hybridX, hybridy, batc
             ood_select_num = tot_ood_size
             id_select_num = int(budget - ood_select_num)
     
-    _, _, _, id_scores = gini_select(canX_id, cany_id, model, id_select_num, batch_size)
+    _, _, _, id_scores = gini_select_score(canX_id, cany_id, model, id_select_num, batch_size)
     idx = np.argsort(id_scores)[::-1]
     id_select_idx = idx[:id_select_num]
     selected_canX_id = canX_id[id_select_idx]
