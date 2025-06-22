@@ -95,7 +95,7 @@ def dat_ood_detector(X, y, model, budget, trainX, trainy, hybridX, hybridy, batc
     # print(model.summary())
     for layer in model.layers:
         # if 'dense' in layer.name:
-        if isinstance(layer, layers.Dense):
+        if isinstance(layer, klayers.Dense):
             dense1 = layer.output
             break
     if dense1 is None:
