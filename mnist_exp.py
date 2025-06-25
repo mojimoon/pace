@@ -4,6 +4,7 @@ import os
 import numpy as np
 import pandas as pd
 # import tensorflow as tf
+from keras import backend as K
 
 model_names = ['lenet1', 'lenet4', 'lenet5']
 testX, testy = mnist.get_data('lenet1') # get_mnist
@@ -11,7 +12,7 @@ trainX, trainy = mnist.get_mnist_train()
 
 # print(testX.shape) # (10000, 28, 28, 1)
 
-out_csv = 'report/mnist2.csv'
+out_csv = 'report/mnist.csv'
 test_dir = 'test/mnist' # test/mnist/{test_set}/{model_name}/{selection_metric}/{budget}
 
 metricList = ['rnd', 'ent', 'gini', 'dat', 'gd', 'kmnc', 'nac', 'lsa', 'dsa', 'nc', 'std', 'pace', 'dr', 'ces', 'mcp', 'est']
@@ -148,6 +149,7 @@ def run_evaluation(model_name, test_set, metricList, budgets, fullX, fully, orig
                 # Type 2 retraining
                 concatenatedX = np.concatenate((originalX, fullX[X_id]), axis=0)
                 concatenatedy = np.concatenate((originaly, fully[X_id]), axis=0)
+                K.set_value(model.optimizer.learning_rate, 0.01)
                 model.fit(concatenatedX, concatenatedy, epochs=3, batch_size=128, verbose=0)
                 retrain_pred = model.predict(fullX, verbose=0)
                 retrain_pred_int = np.argmax(retrain_pred, axis=1)
@@ -176,7 +178,7 @@ def run_evaluation(model_name, test_set, metricList, budgets, fullX, fully, orig
 def evaluate():
     eval_csv = 'report/mnist_eval.csv'
     vals = []
-    originalX, originaly = testX, testy
+    originalX, originaly = trainX, trainy
     metricList = ['nac', 'std']
 
     for m in model_names:
