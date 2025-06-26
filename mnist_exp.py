@@ -179,7 +179,8 @@ def evaluate():
     eval_csv = 'report/mnist_eval.csv'
     vals = []
     originalX, originaly = trainX, trainy
-    metricList = ['nac', 'std']
+    # metricList = ['nac', 'std']
+    metricList = ['rnd', 'ent', 'gini', 'dat', 'gd', 'kmnc', 'lsa', 'dsa', 'nc', 'pace', 'dr', 'ces', 'mcp', 'est']
 
     for m in model_names:
         vals.extend(run_evaluation(m, 'mnist', metricList, budgets, testX, testy, originalX, originaly))
