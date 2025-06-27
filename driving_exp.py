@@ -4,6 +4,7 @@ import driving.epoch.epoch_model as epoch_model
 import metrics
 import os
 import numpy as np
+from sklearn.metrics import mean_squared_error
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
@@ -43,6 +44,13 @@ def get_datasets():
 def test():
     models = get_driving_models()
     datasets = get_datasets()
+    pred = models['dave2v1'].predict(datasets['udacity'][0])
+    print('Udacity dataset shape:', datasets['udacity'][0].shape)
+    print('Prediction shape:', pred.shape)
+    # both pred and y are array of shape (N, 1) in range (-1, 1). They describe steering angles in autonomus driving in radian. What is the best metric to evaluate the performance?
+    y = datasets['udacity'][1]
+    mse = mean_squared_error(y, pred)
+    print('MSE', mse)
 
 if __name__ == '__main__':
     test()

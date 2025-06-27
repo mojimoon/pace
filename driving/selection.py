@@ -251,7 +251,6 @@ def get_udacity_adv(**kwargs):
 
     train_generator = data_generator_img(input_img_data, input_labels,
                                      batch_size=batch_size)
-    import pdb; pdb.set_trace()
     return train_generator, len(input_labels)
 
 def get_data(exp_id):
