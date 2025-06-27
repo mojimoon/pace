@@ -3,12 +3,12 @@ import os
 import argparse
 from numpy import arange
 import random
-from driving_models import *
-from epoch.epoch_model import *
+from driving.driving_models import *
+from driving.epoch.epoch_model import *
 import numpy as np
-from utils import *
+from driving.utils import *
 import datetime
-from data_utils import *
+from driving.data_utils import *
 '''
 env: pace
 usage: python selection.py --exp_id=udacity_dave
@@ -155,6 +155,25 @@ def get_std1_random(X_test, Y_test, a_unoise, countlist,res,label_noise, first_n
 basedir = os.path.abspath(os.path.dirname(__file__))
 shape = [100,100]
 batch_size = 128
+
+def get_udacity(**kwargs):
+    xs = []
+    ys = []
+
+    with open(basedir + '/testing' + '/CH2_final_evaluation.csv', 'r') as f:
+        for i, line in enumerate(f):
+            if i == 0:
+                continue
+            parts = line.split(',')
+            xs.append(basedir + '/testing' + '/center/' + parts[0] + '.jpg')
+            ys.append(float(parts[1]))
+
+    # do not shuffle
+    train_generator = data_generator(xs, ys,
+                                        target_size=(shape[0], shape[1]),
+                                        batch_size=batch_size)
+    return train_generator, len(xs)
+
 def get_udacity_C(**kwargs):
     xs = []
     ys = []
@@ -237,6 +256,7 @@ def get_udacity_adv(**kwargs):
 
 def get_data(exp_id):
     exp_model_dict = {
+                      'udacity': get_udacity,
                       'udacity_C': get_udacity_C,
                       'udacity_label': get_udacity_label,
                       'udacity_adv': get_udacity_adv,

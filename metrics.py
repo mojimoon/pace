@@ -452,9 +452,8 @@ class LSA(object):
         for test_sample in self.neuron_activate_test[:, self.mask]:
             deltas = self.neuron_activate_train[:, self.mask] - test_sample  # shape (n_train, n_features)
             deltas = deltas.T  # gaussian_kde expects shape (n_features, n_samples)
+            # deltas += 1e-6 * np.random.randn(*deltas.shape)
             kde = gaussian_kde(deltas, bw_method='scott')
-            # numpy.linalg.LinAlgError: 18-th leading minor of the array is not positive definite
-            # kde.covariance += np.eye(kde.covariance.shape[0]) * 1e-6
             test_score.append(np.log(kde.evaluate(np.zeros((deltas.shape[0], 1)))[0]))
 
         return test_score

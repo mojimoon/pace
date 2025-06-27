@@ -1,5 +1,5 @@
 import time
-from utils import *
+from driving.utils import *
 
 
 def preprocess(path, target_size):

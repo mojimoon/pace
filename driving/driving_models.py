@@ -4,15 +4,15 @@ from __future__ import print_function
 import os
 import sys
 
-from data_utils import load_train_data, load_test_data
+# from data_utils import load_train_data, load_test_data
 
-from utils import *
+from driving.utils import *
 
 from keras.models import Model, Sequential
 from keras.preprocessing import image
 from keras.layers import Dense, Flatten, Dropout, Input, BatchNormalization, Lambda
 from keras.layers import Convolution2D, MaxPooling2D, AveragePooling2D, GlobalAveragePooling2D
-from keras.layers.advanced_activations import ELU
+# from keras.layers.advanced_activations import ELU
 from keras.optimizers import Adam
 from keras import backend as K
 
@@ -40,7 +40,7 @@ def Dave_orig(input_tensor=None, load_weights=False):  # original dave, dave2v1
 
     # compiling
     m.compile(loss='mse', optimizer='adadelta')
-    print("model compiled!")
+    # print("model compiled!")
     return m
 
 
@@ -71,7 +71,7 @@ def Dave_norminit(input_tensor=None, load_weights=False):  # original dave with 
 
     # compiling
     m.compile(loss='mse', optimizer='adadelta')
-    print("model compiled!")
+    # print("model compiled!")
     return m
 
 
@@ -100,7 +100,7 @@ def Dave_dropout(input_tensor=None, load_weights=False):  # simplified dave, dav
 
     # compiling
     m.compile(loss='mse', optimizer='adadelta')
-    print("model compiled!")
+    # print("model compiled!")
     return m
 
 
