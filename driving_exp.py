@@ -72,8 +72,7 @@ def run_selection(model_name, test_set, metricList, budgets):
                     hybridX = np.concatenate((datasets['udacity'][0], testX), axis=0)
                     hybridy = np.concatenate((datasets['udacity'][1], testy), axis=0)
                     selectedX, selectedy, idx = metrics.dat_ood_detector(
-                        testX, testy, model, b, datasets['udacity'][0], datasets['udacity'][1], hybridX, hybridy,
-                        batch_size=128
+                        testX, testy, model, b, datasets['udacity'][0], datasets['udacity'][1], hybridX, hybridy
                     )
                 else:
                     selectedX, selectedy, idx = metrics.select(
@@ -87,7 +86,7 @@ def run_selection(model_name, test_set, metricList, budgets):
                 # all models are compiled with loss='mse'
                 score = model.evaluate(selectedX, selectedy, verbose=0)
                 with open(out_csv, 'a') as f:
-                    f.write(f'{model_name},{test_set},{m},{b},{score[0]}\n')
+                    f.write(f'{model_name},{test_set},{m},{b},{score}\n')
             except Exception as e:
                 with open('log/driving.log', 'a') as f:
                     f.write(f'Error with model {model_name}, test_set {test_set}, metric {m}, budget {b}: {str(e)}\n')
