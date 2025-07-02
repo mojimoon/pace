@@ -76,7 +76,7 @@ def run_selection(model_name, test_set, metricList, budgets):
                     )
                 else:
                     selectedX, selectedy, idx = metrics.select(
-                        testX, testy, model, b, m
+                        testX, testy, model, b, m, dataset_name='udacity'
                     )
                 test_out_dir = os.path.join(test_dir, test_set, model_name, m, str(b))
                 if not os.path.exists(test_out_dir):

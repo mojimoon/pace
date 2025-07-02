@@ -524,12 +524,15 @@ def dsa_select(X, y, model, budget, std=0.05):
     selected_idx = idx[:budget]
     return X[selected_idx], y[selected_idx], selected_idx
 
-def geometric_diversity_select(X, y, model, budget, batch_size=128, layer_idx=-2, no_groups=50):
+def geometric_diversity_select(X, y, model, budget, batch_size=128, layer_idx=-2, no_groups=50, dataset_name=None):
     min_max_scaler = preprocessing.MinMaxScaler()
     layer = model.layers[layer_idx]
     feat = []
 
     intermediate_layer_model = Model(inputs=model.input, outputs=layer.output)
+    if dataset_name in ['mnist', 'udacity']:
+        feature_extractor = tf.keras.applications.VGG16(include_top=False)
+
     for x_batch, y_batch in make_batch(X, y, batch_size):
         _feat = intermediate_layer_model.predict(x_batch)
         feat.append(_feat)
@@ -550,12 +553,6 @@ def geometric_diversity_select(X, y, model, budget, batch_size=128, layer_idx=-2
         chosen_indices = selected_indices[max_idx]
     
     return X[chosen_indices], y[chosen_indices], chosen_indices
-
-'''
-\textbf{Neuron Coverage (NC)} \cite{pei2017deepxplore} (coverage-based, 2017) computes the ratio of neurons in a given DNN $M$ that are activated above a self-defined threshold value by a given test suite $X_s$:  $NC(X_s) = \frac{|\{n| \forall x \in X_s, a(n,x)>t \}|}{|N|}$. $N = \{n_1, n_2,...\}$ denotes all neurons in the DNN model under test. $a(n,x)$ is the neuron activation value produced by test input $x$ on neuron $n \in N$. $t$ is the self-defined neuron activation threshold. We set $t=0.25$, which is commonly used in Deepxplore and DLFuzz. 
-
-\textbf{Standard Deviation (STD)} \cite{aghababaeyan2023black} (diversity-based, 2023) is a statistical measure of how far from the mean a group of data points is. For a test suite $X_s$, it is calculated as the norm of the standard deviation of each feature in the input set. Formally, $STD(X_s) = \Vert (\sqrt{\sum_{i=1}^{n}  \frac{V_{x_{i,j}} - \mu_j}{n}}, 1 \leq j \leq m) \Vert$, where $V_x$ is the feature matrix of the input set $X_s$ , $m$ is the number of features, $\mu_j$ is the mean value of feature $j$ in $V_x$.
-'''
 
 def update_coverage(input_data, model, model_layer_dict, threshold):
     input_data = np.array(input_data)
@@ -905,7 +902,7 @@ def select(X, y, model, budget, metric, batch_size=128, **kwargs):
     elif metric == 'dsa':
         return dsa_select(X, y, model, budget, std=kwargs.get('std', 0.05))
     elif metric == 'gd':
-        return geometric_diversity_select(X, y, model, budget, batch_size, layer_idx=kwargs.get('layer_idx', -2), no_groups=kwargs.get('no_groups', 50))
+        return geometric_diversity_select(X, y, model, budget, batch_size, layer_idx=kwargs.get('layer_idx', -2), no_groups=kwargs.get('no_groups', 50), dataset_name=kwargs.get('dataset_name', None))
     elif metric == 'nc':
         return neuron_coverage_select(X, y, model, budget, threshold=kwargs.get('threshold', 0.75), batch_size=batch_size)
     elif metric == 'std':

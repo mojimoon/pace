@@ -16,7 +16,7 @@ out_csv = 'report/mnist.csv'
 test_dir = 'test/mnist' # test/mnist/{test_set}/{model_name}/{selection_metric}/{budget}
 
 metricList = ['rnd', 'ent', 'gini', 'dat', 'gd', 'kmnc', 'nac', 'lsa', 'dsa', 'nc', 'std', 'pace', 'dr', 'ces', 'mcp', 'est']
-budgets = [50, 100, 150, 200]
+budgets = [10000] #[50, 100, 150, 200]
 
 def onehot_to_int(y):
     if y.ndim == 2 and y.shape[1] > 1:
@@ -70,12 +70,12 @@ def run_selection(model_name, test_set, testX, testy, metricList, budgets):
             #     with open('log/mnist2.log', 'a') as f:
             #         f.write(f'Error with model {model_name}, test_set {test_set}, metric {m}, budget {b}: {str(e)}\n')
 
-def main():
+def select():
     if not os.path.exists(out_csv):
         with open(out_csv, 'w') as f:
             f.write('model,test_set,selection_metric,budget,accuracy\n')
     
-    metricList = ['nac']
+    metricList = ['rnd', 'ent', 'gini', 'dat']
 
     for m in model_names:
         run_selection(m, 'mnist', testX, testy, metricList, budgets)
@@ -97,10 +97,9 @@ def apfd_from_order(is_fault, index_order):
     assert is_fault.ndim == 1, "at the moment, only unique faults are supported"
     ordered_faults = is_fault[index_order]
     fault_indexes = np.where(ordered_faults == 1)[0]
-    #k = np.count_nonzero(is_fault)
-    k = np.count_nonzero(ordered_faults)
-    #n = is_fault.shape[0]
-    n = ordered_faults.shape[0]
+    k = np.count_nonzero(is_fault)
+    n = is_fault.shape[0]
+    # The +1 comes from the fact that the first sample has index 0 but order 1
     sum_of_fault_orders = np.sum(fault_indexes + 1)
     return 1 - (sum_of_fault_orders / (k * n)) + (1 / (2 * n))
 
@@ -135,6 +134,9 @@ def run_evaluation(model_name, test_set, metricList, budgets, fullX, fully, orig
                 sort[X_id] = np.arange(1, b + 1)
 
                 apfd_from_order_score = apfd_from_order(is_fault, X_id)
+                print(is_fault[X_id], 'sum', is_fault[X_id].sum())
+                print('apfd score', apfd_from_order_score)
+                breakpoint()
                 acc_hat = np.mean(full_pred_int[X_id] == full_y_int[X_id])
                 acc = np.mean(full_pred_int == full_y_int)
                 rmse_score = np.abs(acc_hat - acc)
@@ -176,7 +178,7 @@ def evaluate():
     eval_csv = 'report/mnist_eval.csv'
     vals = []
     originalX, originaly = trainX, trainy
-    metricList = ['ent', 'gini']
+    metricList = ['rnd', 'ent', 'gini']
     #metricList = ['rnd', 'ent', 'gini', 'dat', 'gd', 'kmnc', 'lsa', 'dsa', 'nc', 'pace', 'dr', 'ces', 'mcp', 'est']
 
     for m in model_names:
@@ -198,5 +200,5 @@ def evaluate():
         df.to_csv(eval_csv, mode='a', header=False, index=False)
     
 if __name__ == '__main__':
-    # main()
-    evaluate()
+    select()
+    # evaluate()
