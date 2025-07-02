@@ -96,6 +96,10 @@ def main():
         with open(out_csv, 'w') as f:
             f.write('model,test_set,selection_metric,budget,mse\n')
     
+    # metricList = ['rnd', 'ent', 'gini', 'dat', 'gd', 'std']
+    # metricList = ['pace', 'dr', 'ces', 'mcp', 'est']
+    merticList = ['kmnc', 'nac', 'lsa', 'dsa', 'nc']
+
     for m in models.keys():
         run_selection(m, 'udacity', metricList, budgets)
     
