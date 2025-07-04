@@ -39,7 +39,7 @@ def int_to_onehot(y, num_classes=10):
 #     model.summary()
 #     return model
 
-def run_selection(model_name, test_set, testX, testy, metricList, budgets):
+def run_selection(model_name, test_set, testX, testy, metricList, budgets, dataset):
     model = mnist.get_model(model_name)
 
     for m in metricList:
@@ -55,7 +55,7 @@ def run_selection(model_name, test_set, testX, testy, metricList, budgets):
                     )
                 else:
                     selectedX, selectedy, idx = metrics.select(
-                        testX, testy, model, b, m
+                        testX, testy, model, b, m, dataset
                     )
                 score = model.evaluate(selectedX, selectedy, verbose=0)
                 test_out_dir = os.path.join(test_dir, test_set, model_name, m, str(b))
@@ -70,27 +70,27 @@ def run_selection(model_name, test_set, testX, testy, metricList, budgets):
             #     with open('log/mnist2.log', 'a') as f:
             #         f.write(f'Error with model {model_name}, test_set {test_set}, metric {m}, budget {b}: {str(e)}\n')
 
-def select():
+def select(dataset='mnist'):
     if not os.path.exists(out_csv):
         with open(out_csv, 'w') as f:
             f.write('model,test_set,selection_metric,budget,accuracy\n')
     
-    metricList = ['rnd', 'ent', 'gini', 'dat']
+    metricList = ['nac','kmnc', 'lsa', 'dsa']
 
     for m in model_names:
-        run_selection(m, 'mnist', testX, testy, metricList, budgets)
+        run_selection(m, 'mnist', testX, testy, metricList, budgets, dataset)
     
     _X, _y = mnist.get_corrupted_mnist()
-    run_selection('lenet5', 'mnist_c', _X, _y, metricList, budgets)
+    run_selection('lenet5', 'mnist_c', _X, _y, metricList, budgets, dataset)
 
     _X, _y = mnist.get_adv_mnist()
-    run_selection('lenet5', 'mnist_adv', _X, _y, metricList, budgets)
+    run_selection('lenet5', 'mnist_adv', _X, _y, metricList, budgets, dataset)
 
     _X, _y = mnist.get_label_mnist()
-    run_selection('lenet5', 'mnist_label', _X, _y, metricList, budgets)
+    run_selection('lenet5', 'mnist_label', _X, _y, metricList, budgets, dataset)
 
     _X, _y = mnist.get_mnist_emnist()
-    run_selection('lenet5', 'mnist_emnist', _X, _y, metricList, budgets)
+    run_selection('lenet5', 'mnist_emnist', _X, _y, metricList, budgets, dataset)
 
 
 def apfd_from_order(is_fault, index_order):

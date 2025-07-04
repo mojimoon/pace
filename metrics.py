@@ -5,6 +5,7 @@ rewrite of selection_metrics.py in flavor of Keras
 from collections import defaultdict
 from sklearn import preprocessing
 import tensorflow as tf
+from keras import Input, Sequential
 import numpy as np
 from keras.models import Model
 # from keras.layers.convolutional import Conv2D
@@ -388,10 +389,9 @@ class nac(object):
             temp=1/(1+np.exp(-temp))
             self.neuron_activate.append(temp.copy())
         self.neuron_activate=np.concatenate(self.neuron_activate,axis=1)
-
         return np.argsort(np.sum(self.neuron_activate>self.t,axis=1))[::-1]
 
-def nac_select(X, y, model, budget, t=0.5):
+def nac_select(X, y, model, budget, t=0.75):
     layers = extract_layers(model)
     nac_model = nac(test=X, input=model.input, layers=layers, t=t)
     nac_model.fit()
@@ -524,20 +524,39 @@ def dsa_select(X, y, model, budget, std=0.05):
     selected_idx = idx[:budget]
     return X[selected_idx], y[selected_idx], selected_idx
 
-def geometric_diversity_select(X, y, model, budget, batch_size=128, layer_idx=-2, no_groups=50, dataset_name=None):
+def geometric_diversity_select(X, y, dataset_name, budget, batch_size=128, no_groups=50):
     min_max_scaler = preprocessing.MinMaxScaler()
-    layer = model.layers[layer_idx]
     feat = []
 
-    intermediate_layer_model = Model(inputs=model.input, outputs=layer.output)
-    if dataset_name in ['mnist', 'udacity']:
-        feature_extractor = tf.keras.applications.VGG16(include_top=False)
+    if dataset_name.lower() in ['mnist', 'udacity']:
+        vgg16_imagenet_path = '/home/jzhang2297/empirical/pace/vgg16_weights_tf_dim_ordering_tf_kernels_notop.h5'
+        feature_extractor = tf.keras.applications.VGG16(include_top=False, weights=vgg16_imagenet_path)
+        layer = feature_extractor.layers[-1]  # maxpooling layer after the last convolutional layer.
+        intermediate_layer_model = Model(inputs=feature_extractor.input, outputs=layer.output)
 
+    elif dataset_name.lower() in ['androzoo']:
+        from learner import model_scope_dict
+        model = 'deepdrebin'
+        targeted_model_names_dict = model_scope_dict.copy()
+        targeted_model = targeted_model_names_dict[model](mode='test')
+        ckpt_dir = '/home/jzhang2297/anomaly/malware/adversarial-deep-ensemble-droidmawlare/{0}/saved_parameters/{1}/'.format(dataset_name, model)
+        sess = tf.Session()
+        cur_checkpoint = tf.train.latest_checkpoint(ckpt_dir)
+        layer = targeted_model.dense1
+    else:
+        layer = None
+    breakpoint()
+    # intermediate_layer_model = Model(inputs=Input(shape=X[0].shape), outputs=layer.output)
     for x_batch, y_batch in make_batch(X, y, batch_size):
-        _feat = intermediate_layer_model.predict(x_batch)
-        feat.append(_feat)
+        if x_batch.shape[-1] == 1:
+            x_batch = tf.image.grayscale_to_rgb(tf.convert_to_tensor(x_batch, dtype=tf.float32))
+            if x_batch.shape[1] < 32 or x_batch.shape[2] < 32:
+                x_batch = tf.image.resize(x_batch, [32, 32])
+        _feat = intermediate_layer_model.predict(x_batch)  # MNIST (32,32,3) -> (1,1,512) feature shape
+        feat.append(_feat.reshape(_feat.shape[0],-1))
     feat_mat = np.vstack(feat)
-    # print(f"Feature matrix shape: {feat_mat.shape}")
+    print(f"Feature matrix shape: {feat_mat.shape}")
+    breakpoint()
     GD_scores, selected_indices = [], []
     for _ in range(no_groups):
         select_idx = np.random.choice(np.arange(len(feat_mat)), budget)
@@ -549,10 +568,63 @@ def geometric_diversity_select(X, y, model, budget, batch_size=128, layer_idx=-2
         GD = np.linalg.det(np.matmul(normalize_select_group, normalize_select_group.T))
         GD_scores.append(GD.squeeze())
 
-        max_idx = np.argmax(np.array(GD_scores))
-        chosen_indices = selected_indices[max_idx]
-    
+    max_idx = np.argmax(np.array(GD_scores))
+    chosen_indices = selected_indices[max_idx]
     return X[chosen_indices], y[chosen_indices], chosen_indices
+
+def std_select(X, y, dataset_name, budget, batch_size=128, no_groups=50):
+    min_max_scaler = preprocessing.MinMaxScaler()
+    feat = []
+
+    if dataset_name.lower() in ['mnist', 'udacity']:
+        vgg16_imagenet_path = '/home/jzhang2297/empirical/pace/vgg16_weights_tf_dim_ordering_tf_kernels_notop.h5'
+        feature_extractor = tf.keras.applications.VGG16(include_top=False, weights=vgg16_imagenet_path)
+        layer = feature_extractor.layers[-1]  # maxpooling layer after the last convolutional layer.
+        intermediate_layer_model = Model(inputs=feature_extractor.input, outputs=layer.output)
+
+    elif dataset_name.lower() in ['androzoo']:
+        from learner import model_scope_dict
+        model = 'deepdrebin'
+        targeted_model_names_dict = model_scope_dict.copy()
+        targeted_model = targeted_model_names_dict[model](mode='test')
+        ckpt_dir = '/home/jzhang2297/anomaly/malware/adversarial-deep-ensemble-droidmawlare/{0}/saved_parameters/{1}/'.format(
+            dataset_name, model)
+        sess = tf.Session()
+        cur_checkpoint = tf.train.latest_checkpoint(ckpt_dir)
+        layer = targeted_model.dense1
+    else:
+        layer = None
+
+    # intermediate_layer_model = Model(inputs=Input(shape=X[0].shape), outputs=layer.output)
+    for x_batch, y_batch in make_batch(X, y, batch_size):
+        if x_batch.shape[-1] == 1:
+            x_batch = tf.image.grayscale_to_rgb(tf.convert_to_tensor(x_batch, dtype=tf.float32))
+            if x_batch.shape[1]<32 or x_batch.shape[2]<32:
+                x_batch = tf.image.resize(x_batch, [32,32])
+        _feat = intermediate_layer_model.predict(x_batch) # MNIST (32,32,3) -> (1,1,512) feature shape
+        feat.append(_feat.reshape(_feat.shape[0],-1))
+    feat_mat = np.vstack(feat)
+    print(f"Feature matrix shape: {feat_mat.shape}")
+    breakpoint()
+    std_scores, selected_indices = [], []
+    for _ in range(no_groups):
+        select_idx = np.random.choice(np.arange(len(feat_mat)), budget)
+        selected_indices.append(select_idx)
+        select_group = feat_mat[select_idx]
+        # normalize group
+        normalize_select_group = min_max_scaler.fit_transform(select_group)
+        # compute STD
+        STD = np.linalg.norm(np.std(normalize_select_group, axis=0))
+        std_scores.append(STD.squeeze())
+    max_idx = np.argmax(np.array(std_scores))
+    chosen_indices = selected_indices[max_idx]
+    return X[chosen_indices], y[chosen_indices], chosen_indices
+
+'''
+\textbf{Neuron Coverage (NC)} \cite{pei2017deepxplore} (coverage-based, 2017) computes the ratio of neurons in a given DNN $M$ that are activated above a self-defined threshold value by a given test suite $X_s$:  $NC(X_s) = \frac{|\{n| \forall x \in X_s, a(n,x)>t \}|}{|N|}$. $N = \{n_1, n_2,...\}$ denotes all neurons in the DNN model under test. $a(n,x)$ is the neuron activation value produced by test input $x$ on neuron $n \in N$. $t$ is the self-defined neuron activation threshold. We set $t=0.25$, which is commonly used in Deepxplore and DLFuzz. 
+
+\textbf{Standard Deviation (STD)} \cite{aghababaeyan2023black} (diversity-based, 2023) is a statistical measure of how far from the mean a group of data points is. For a test suite $X_s$, it is calculated as the norm of the standard deviation of each feature in the input set. Formally, $STD(X_s) = \Vert (\sqrt{\sum_{i=1}^{n}  \frac{V_{x_{i,j}} - \mu_j}{n}}, 1 \leq j \leq m) \Vert$, where $V_x$ is the feature matrix of the input set $X_s$ , $m$ is the number of features, $\mu_j$ is the mean value of feature $j$ in $V_x$.
+'''
 
 def update_coverage(input_data, model, model_layer_dict, threshold):
     input_data = np.array(input_data)
@@ -625,17 +697,6 @@ def neuron_coverage_select(X, y, model, budget, threshold=0.75, batch_size=128):
     selected_idx = indices[np.argsort(coverage_scores)[::-1][:budget]]
     return X[selected_idx], y[selected_idx], selected_idx
 
-def std_select(X, y, budget):
-    X = np.asarray(X)
-    if X.ndim > 2:
-        # Flatten all but first axis (sample axis)
-        X_flat = X.reshape(X.shape[0], -1)
-    else:
-        X_flat = X
-    sample_std = np.std(X_flat, axis=1)
-    idx = np.argsort(sample_std)[::-1]
-    selected_idx = idx[:budget]
-    return X[selected_idx], y[selected_idx], selected_idx
 
 def pace(X, y, model, budget, batch_size=128, layer_idx=-2, min_cluster_size=5, min_samples=5):
     import hdbscan
@@ -884,7 +945,7 @@ def deepest(X, y, model, budget, batch_size=128, occurrence_prob=None):
     selected_idx = idx[:budget]
     return X[selected_idx], y[selected_idx], selected_idx
 
-def select(X, y, model, budget, metric, batch_size=128, **kwargs):
+def select(X, y, model, budget, metric, dataset, batch_size=128, **kwargs):
     if metric == 'rnd':
         return random_select(X, y, budget)
     elif metric == 'ent':
@@ -896,17 +957,17 @@ def select(X, y, model, budget, metric, batch_size=128, **kwargs):
     elif metric == 'kmnc':
         return kmnc_select(X, y, model, budget, k_bins=kwargs.get('k_bins', 1000))
     elif metric == 'nac':
-        return nac_select(X, y, model, budget, t=kwargs.get('t', 0.5))
+        return nac_select(X, y, model, budget, t=kwargs.get('t', 0.75))
     elif metric == 'lsa':
         return lsa_select(X, y, model, budget, std=kwargs.get('std', 0.05))
     elif metric == 'dsa':
         return dsa_select(X, y, model, budget, std=kwargs.get('std', 0.05))
     elif metric == 'gd':
-        return geometric_diversity_select(X, y, model, budget, batch_size, layer_idx=kwargs.get('layer_idx', -2), no_groups=kwargs.get('no_groups', 50), dataset_name=kwargs.get('dataset_name', None))
-    elif metric == 'nc':
-        return neuron_coverage_select(X, y, model, budget, threshold=kwargs.get('threshold', 0.75), batch_size=batch_size)
+        return geometric_diversity_select(X, y, dataset, budget, batch_size, no_groups=kwargs.get('no_groups', 50))
+    #elif metric == 'nc':
+    #    return neuron_coverage_select(X, y, model, budget, threshold=kwargs.get('threshold', 0.75), batch_size=batch_size)
     elif metric == 'std':
-        return std_select(X, y, budget)
+        return std_select(X, y, dataset, budget, batch_size=batch_size, no_groups=50)
     elif metric == 'pace':
         return pace(X, y, model, budget, batch_size=batch_size, layer_idx=kwargs.get('layer_idx', -2), min_cluster_size=kwargs.get('min_cluster_size', 5), min_samples=kwargs.get('min_samples', 5))
     elif metric == 'dr':
