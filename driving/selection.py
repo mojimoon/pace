@@ -182,19 +182,12 @@ def get_udacity_C(**kwargs):
         for i, line in enumerate(f):
             xs.append(line.split(',')[0])
             ys.append(float(line.split(',')[1]))
-    # shuffle list of images
-    c = list(zip(xs, ys))
-    random.shuffle(c)
-    xs, ys = zip(*c)
 
-    train_xs = xs
-    train_ys = ys
-
-    train_generator = data_generator(train_xs, train_ys,
+    train_generator = data_generator(xs, ys,
                                      target_size=(shape[0], shape[1]),
                                      batch_size=batch_size)
 
-    return train_generator, len(train_xs)
+    return train_generator, len(xs)
 
 def get_udacity_label(**kwargs):
     xs = []
@@ -206,19 +199,12 @@ def get_udacity_label(**kwargs):
                 continue
             xs.append(basedir + '/testing' + '/center/' + line.split(',')[0] + '.jpg')
             ys.append(float(line.split(',')[1]))
-    # shuffle list of images
-    c = list(zip(xs, ys))
-    random.shuffle(c)
-    xs, ys = zip(*c)
 
-    train_xs = xs
-    train_ys = ys
-
-    train_generator = data_generator(train_xs, train_ys,
+    train_generator = data_generator(xs, ys,
                                      target_size=(shape[0], shape[1]),
                                      batch_size=batch_size)
 
-    return train_generator, len(train_xs)
+    return train_generator, len(xs)
 
 def get_udacity_dave(**kwargs):
     xs = []
@@ -228,19 +214,12 @@ def get_udacity_dave(**kwargs):
         for i, line in enumerate(f):
             xs.append(line.split(',')[0])
             ys.append(float(line.split(',')[1]))
-    # shuffle list of images
-    c = list(zip(xs, ys))
-    random.shuffle(c)
-    xs, ys = zip(*c)
 
-    train_xs = xs
-    train_ys = ys
-
-    train_generator = data_generator(train_xs, train_ys,
+    train_generator = data_generator(xs, ys,
                                      target_size=(shape[0], shape[1]),
                                      batch_size=batch_size)
 
-    return train_generator, len(train_xs)
+    return train_generator, len(xs)
 
 from tensorflow.keras.applications.imagenet_utils import preprocess_input
 def get_udacity_adv(**kwargs):
@@ -252,6 +231,22 @@ def get_udacity_adv(**kwargs):
     train_generator = data_generator_img(input_img_data, input_labels,
                                      batch_size=batch_size)
     return train_generator, len(input_labels)
+
+def get_train_data(path= '/home/jzhang2297/data/udacity_output/Ch2_002/', num=5000, batch_size=128):
+    xs = []
+    ys = []
+    with open(path + 'interpolated.csv', 'r') as f:
+        for i, line in enumerate(f):
+            if i == 0:
+                continue
+            xs.append(path + line.split(',')[5])
+            ys.append(float(line.split(',')[6]))
+    print('loaded training data', np.array(xs)[:num].shape, np.array(xs)[0])
+    train_generator = data_generator(xs[:num], ys[:num],
+                                     target_size=(shape[0], shape[1]),
+                                     batch_size=batch_size)
+
+    return train_generator, len(xs[:num])
 
 def get_data(exp_id):
     exp_model_dict = {

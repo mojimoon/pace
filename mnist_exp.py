@@ -16,7 +16,7 @@ out_csv = 'report/mnist.csv'
 test_dir = 'test/mnist' # test/mnist/{test_set}/{model_name}/{selection_metric}/{budget}
 
 metricList = ['rnd', 'ent', 'gini', 'dat', 'gd', 'kmnc', 'nac', 'lsa', 'dsa', 'nc', 'std', 'pace', 'dr', 'ces', 'mcp', 'est']
-budgets = [10000] #[50, 100, 150, 200]
+budgets = [50, 100, 150, 200, 10000]
 
 def onehot_to_int(y):
     if y.ndim == 2 and y.shape[1] > 1:
@@ -39,11 +39,18 @@ def int_to_onehot(y, num_classes=10):
 #     model.summary()
 #     return model
 
-def run_selection(model_name, test_set, testX, testy, metricList, budgets, dataset):
+def run_selection(model_name, test_set, testX, testy, metricList, budgets, force_save=False):
     model = mnist.get_model(model_name)
-
     for m in metricList:
         for b in budgets:
+            test_out_dir = os.path.join(test_dir, test_set, model_name, m, str(b))
+            if not os.path.exists(test_out_dir):
+                os.makedirs(test_out_dir)
+            # save idx to X.txt and true values to y.txt
+            print('save selected test suite to', test_out_dir)
+            if os.path.exists(os.path.join(test_out_dir, 'X.txt')) and os.path.exists(os.path.join(test_out_dir, 'y.txt')) and force_save==False:
+                print('path exists')
+                continue
             # try:
             if True:
                 if m == 'dat':
@@ -54,14 +61,10 @@ def run_selection(model_name, test_set, testX, testy, metricList, budgets, datas
                         testX, testy, model, b, trainX, trainy, hybridX, hybridy, batch_size=128, num_classes=10
                     )
                 else:
-                    selectedX, selectedy, idx = metrics.select(
-                        testX, testy, model, b, m, dataset
+                    selectedX, selectedy, idx = metrics.select(trainX, trainy,
+                        testX, testy, model, b, m, test_set, model_name
                     )
                 score = model.evaluate(selectedX, selectedy, verbose=0)
-                test_out_dir = os.path.join(test_dir, test_set, model_name, m, str(b))
-                if not os.path.exists(test_out_dir):
-                    os.makedirs(test_out_dir)
-                # save idx to X.txt and true values to y.txt
                 np.savetxt(os.path.join(test_out_dir, 'X.txt'), idx, fmt='%d')
                 np.savetxt(os.path.join(test_out_dir, 'y.txt'), onehot_to_int(selectedy).astype(int), fmt='%d')
                 with open(out_csv, 'a') as f:
@@ -70,27 +73,27 @@ def run_selection(model_name, test_set, testX, testy, metricList, budgets, datas
             #     with open('log/mnist2.log', 'a') as f:
             #         f.write(f'Error with model {model_name}, test_set {test_set}, metric {m}, budget {b}: {str(e)}\n')
 
-def select(dataset='mnist'):
+def select(resave):
     if not os.path.exists(out_csv):
         with open(out_csv, 'w') as f:
             f.write('model,test_set,selection_metric,budget,accuracy\n')
     
-    metricList = ['nac','kmnc', 'lsa', 'dsa']
+    metricList = ['lsa']
 
     for m in model_names:
-        run_selection(m, 'mnist', testX, testy, metricList, budgets, dataset)
+        run_selection(m, 'mnist', testX, testy, metricList, budgets, resave)
     
     _X, _y = mnist.get_corrupted_mnist()
-    run_selection('lenet5', 'mnist_c', _X, _y, metricList, budgets, dataset)
+    run_selection('lenet5', 'mnist_c', _X, _y, metricList, budgets, resave)
 
     _X, _y = mnist.get_adv_mnist()
-    run_selection('lenet5', 'mnist_adv', _X, _y, metricList, budgets, dataset)
+    run_selection('lenet5', 'mnist_adv', _X, _y, metricList, budgets, resave)
 
     _X, _y = mnist.get_label_mnist()
-    run_selection('lenet5', 'mnist_label', _X, _y, metricList, budgets, dataset)
+    run_selection('lenet5', 'mnist_label', _X, _y, metricList, budgets, resave)
 
     _X, _y = mnist.get_mnist_emnist()
-    run_selection('lenet5', 'mnist_emnist', _X, _y, metricList, budgets, dataset)
+    run_selection('lenet5', 'mnist_emnist', _X, _y, metricList, budgets, resave)
 
 
 def apfd_from_order(is_fault, index_order):
@@ -178,7 +181,7 @@ def evaluate():
     eval_csv = 'report/mnist_eval.csv'
     vals = []
     originalX, originaly = trainX, trainy
-    metricList = ['rnd', 'ent', 'gini']
+    metricList = ['dsa']
     #metricList = ['rnd', 'ent', 'gini', 'dat', 'gd', 'kmnc', 'lsa', 'dsa', 'nc', 'pace', 'dr', 'ces', 'mcp', 'est']
 
     for m in model_names:
@@ -200,5 +203,5 @@ def evaluate():
         df.to_csv(eval_csv, mode='a', header=False, index=False)
     
 if __name__ == '__main__':
-    select()
+    select(resave=True)
     # evaluate()

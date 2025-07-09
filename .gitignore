@@ -272,3 +272,4 @@ mnist_cifar_imagenet_svhn/data/
 test/
 log/
 *.whl
+*.npy

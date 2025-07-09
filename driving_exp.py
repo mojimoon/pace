@@ -12,7 +12,7 @@ out_csv = 'report/driving.csv'
 test_dir = 'test/driving' # test/driving/{test_set}/{model_name}/{selection_metric}/{budget}
 
 metricList = ['rnd', 'ent', 'gini', 'dat', 'gd', 'kmnc', 'nac', 'lsa', 'dsa', 'nc', 'std', 'pace', 'dr', 'ces', 'mcp', 'est']
-budgets = [50, 100, 150, 200]
+budgets = [50, 100, 150, 200, 5614]
 
 def get_driving_models():
     models = {
@@ -39,12 +39,13 @@ def from_generator(gen, tot):
         ys.append(y_batch)
     return np.concatenate(xs, axis=0), np.concatenate(ys, axis=0)
 
-def get_datasets():
+def get_datasets(vs):
     datasets = dict()
-    for v in ['udacity', 'udacity_C', 'udacity_label', 'udacity_adv', 'udacity_dave']:
+    for v in vs:
         gen, tot = selection.get_data(v)
         x, y = from_generator(gen, tot)
         datasets[v] = (x, y, tot)
+        print('loaded dataset', v)
     return datasets
 
 # def test():
@@ -59,9 +60,10 @@ def get_datasets():
 #     print('MSE', mse)
 
 models = get_driving_models()
-datasets = get_datasets()
+train_gen, tot = selection.get_train_data()
+trainX, trainy = from_generator(train_gen, tot)
 
-def run_selection(model_name, test_set, metricList, budgets):
+def run_selection(model_name, test_set, datasets, metricList, budgets):
     model = models[model_name]
     testX, testy, tot = datasets[test_set]
 
@@ -75,8 +77,9 @@ def run_selection(model_name, test_set, metricList, budgets):
                         testX, testy, model, b, datasets['udacity'][0], datasets['udacity'][1], hybridX, hybridy
                     )
                 else:
-                    selectedX, selectedy, idx = metrics.select(
-                        testX, testy, model, b, m, dataset_name='udacity'
+                    print('metric select', m, 'budget', b, 'model', model_name)
+                    selectedX, selectedy, idx = metrics.select(trainX, trainy,
+                        testX, testy, model, b, m, 'udacity', model_name
                     )
                 test_out_dir = os.path.join(test_dir, test_set, model_name, m, str(b))
                 if not os.path.exists(test_out_dir):
@@ -95,16 +98,15 @@ def main():
     if not os.path.exists(out_csv):
         with open(out_csv, 'w') as f:
             f.write('model,test_set,selection_metric,budget,mse\n')
-    
-    # metricList = ['rnd', 'ent', 'gini', 'dat', 'gd', 'std']
-    # metricList = ['pace', 'dr', 'ces', 'mcp', 'est']
-    merticList = ['kmnc', 'nac', 'lsa', 'dsa', 'nc']
 
+    metricList = ['dsa']
+    datasets = get_datasets(['udacity'])
     for m in models.keys():
-        run_selection(m, 'udacity', metricList, budgets)
+        run_selection(m, 'udacity', datasets, metricList, budgets)
     
     for v in ['udacity_C', 'udacity_label', 'udacity_adv', 'udacity_dave']:
-        run_selection('epoch', v, metricList, budgets)
+        datasets = get_datasets([v])
+        run_selection('epoch', v, datasets, metricList, budgets)
 
 if __name__ == '__main__':
     # test()

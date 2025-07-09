@@ -1,7 +1,7 @@
 '''
 rewrite of selection_metrics.py in flavor of Keras
 '''
-
+import os.path
 from collections import defaultdict
 from sklearn import preprocessing
 import tensorflow as tf
@@ -15,6 +15,12 @@ from scipy.stats import gaussian_kde
 from functools import reduce
 import copy
 import keras.backend as K
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import List, Any
+import sys
+import random
 
 def to_ordinal(y):
     if y.ndim == 1:
@@ -400,7 +406,7 @@ def nac_select(X, y, model, budget, t=0.75):
     return X[selected_indices], y[selected_indices], selected_indices
 
 class LSA(object):
-    def __init__(self,train,input,layers,std=0.05):
+    def __init__(self,train,input,layers,dataset_name,model_name,std=0.05):
         '''
         train:训练集数据
         input:输入张量
@@ -410,24 +416,34 @@ class LSA(object):
         self.input=input
         self.layers=layers
         self.std=std
+        self.name=dataset_name
+        self.model_name = model_name
         self.lst=[]
         self.std_lst=[]
         self.mask=[]
         self.neuron_activate_train=[]
 
-        for index, l in layers:
+        for index,l in [layers[-2]]:
             self.lst.append((index, Model(inputs=input, outputs=l)))
             i = Model(inputs=input, outputs=l)
-            if index == 'conv':
-                temp = i.predict(train).reshape(len(train), -1, l.shape[-1])
-                temp = np.mean(temp, axis=1)
-            if index == 'dense':
-                temp = i.predict(train).reshape(len(train), l.shape[-1])
-            self.neuron_activate_train.append(temp.copy())
-            std_value = np.std(temp, axis=0)
+            if 'mnist' in dataset_name:
+                trainset_name = 'mnist'
+            path = f'./AllResult/LSA/{trainset_name}_{model_name}_neuron_activate_train.npy'
+            if os.path.exists(path):
+                self.neuron_activate_train = np.load(path)
+            else:
+                if index == 'conv':
+                    temp = i.predict(train).reshape(len(train), -1, l.shape[-1])
+                    temp = np.mean(temp, axis=1)
+                if index == 'dense':
+                    temp = i.predict(train).reshape(len(train), l.shape[-1])
+                self.neuron_activate_train.append(temp.copy())
+                self.neuron_activate_train = np.concatenate(self.neuron_activate_train, axis=1)
+                np.save(path, self.neuron_activate_train)
+            std_value = np.std(self.neuron_activate_train, axis=0)
             self.std_lst.append(std_value)
             self.mask.append(std_value > self.std)
-        self.neuron_activate_train=np.concatenate(self.neuron_activate_train,axis=1)
+
         self.mask=np.concatenate(self.mask,axis=0)
 
     def fit(self,test,use_lower=False):
@@ -458,42 +474,57 @@ class LSA(object):
 
         return test_score
 
-def lsa_select(X, y, model, budget, std=0.05):
+def lsa_select(trainX, trainy, X, y, model, budget, dataset, model_name, std=0.05):
     layers = extract_layers(model)
-    lsa_model = LSA(train=X, input=model.input, layers=layers, std=std)
+    lsa_model = LSA(train=trainX, input=model.input, layers=layers, dataset_name=dataset, model_name=model_name, std=std)
     scores = lsa_model.fit(X)
     idx = np.argsort(scores)[::-1]
     selected_idx = idx[:budget]
     return X[selected_idx], y[selected_idx], selected_idx
 
 class DSA(object):
-    def __init__(self,train,label,input,layers,std=0.05):
+    def __init__(self,train,label,model,layers,dataset_name,model_name,std=0.05):
         '''
         train:训练集数据
         input:输入张量
         layers:输出张量层
         '''
         self.train=train
-        self.input=input
+        self.input=model.input
+        self.model=model
         self.layers=layers
-        self.std=std
+        #self.std=std
+        self.model_name=model_name
         self.lst=[]
+        self.conf=[]
         self.std_lst=[]
         self.mask=[]
         self.neuron_activate_train=[]
+        self.name=dataset_name
         index_lst=[]
 
-        for index,l in layers:
-            self.lst.append((index, Model(inputs=input, outputs=l)))
+        # we use the last hidden layer for all models (NOT softmax).
+        for index,l in [layers[-2]]:
+            self.lst.append((index, Model(inputs=model.input, outputs=l)))
             index_lst.append(index)
-            i=Model(inputs=input,outputs=l)
-            if index=='conv':
-                temp=i.predict(train).reshape(len(train),-1,l.shape[-1])
-                temp=np.mean(temp,axis=1)
-            if index=='dense':
-                temp=i.predict(train).reshape(len(train),l.shape[-1])
-            self.neuron_activate_train.append(temp.copy())
-        self.neuron_activate_train=np.concatenate(self.neuron_activate_train,axis=1)
+            i=Model(inputs=model.input,outputs=l)
+            if 'mnist' in dataset_name:
+                trainset_name = 'mnist'
+            elif 'udacity' in dataset_name:
+                trainset_name = 'udacity'
+            path = f'./AllResult/DSA/{trainset_name}_{model_name}_neuron_activate_train.npy'
+            if os.path.exists(path):
+                self.neuron_activate_train = np.load(path)
+            else:
+                if index=='conv':
+                    temp=i.predict(train).reshape(len(train),-1,l.shape[-1])
+                    print('temp shape', temp.shape)
+                    temp=np.mean(temp,axis=1)
+                if index=='dense':
+                    temp=i.predict(train).reshape(len(train),l.shape[-1])
+                self.neuron_activate_train.append(temp.copy())
+                self.neuron_activate_train=np.concatenate(self.neuron_activate_train,axis=1)
+                np.save(path, self.neuron_activate_train)
         # print('train_label shape', label.shape)
         self.train_label = to_ordinal(label)
 
@@ -506,7 +537,12 @@ class DSA(object):
             if index=='dense':
                 temp=l.predict(test).reshape(len(test),l.output.shape[-1])
             self.neuron_activate_test.append(temp.copy())
-        self.neuron_activate_test=np.concatenate(self.neuron_activate_test,axis=1)
+        self.neuron_activate_test = np.concatenate(self.neuron_activate_test, axis=1)
+        # save confidence score fort deepest
+        for _, conf_l in [self.layers[-1]]:
+            conf_layer = Model(inputs=self.model.input, outputs=conf_l)
+            temp_conf = conf_layer.predict(test).reshape(len(test), conf_layer.output.shape[-1])
+            softmax = tf.nn.softmax(temp_conf)
         test_score = []
         # print('label shape', label.shape)
         label = to_ordinal(label)
@@ -514,12 +550,19 @@ class DSA(object):
             dist_a = np.min(((self.neuron_activate_train[self.train_label == label_sample] - test_sample) ** 2).sum(axis=1))
             dist_b = np.min(((self.neuron_activate_train[self.train_label != label_sample] - test_sample) ** 2).sum(axis=1))
             test_score.append(dist_a/dist_b)
+        # save DSA value
+        breakpoint()
+        np.save(f'./AllResult/DSA/{self.name}_{self.model_name}_dsa.npy', np.array(test_score))
+        np.save(f'./AllResult/DSA/{self.name}_{self.model_name}_confidence.npy', np.array(softmax))
         return test_score
 
-def dsa_select(X, y, model, budget, std=0.05):
+def dsa_select(trainX, trainy, X, y, model, budget, dataset, model_name, std=0.05):
     layers = extract_layers(model)
-    dsa_model = DSA(train=X, label=y, input=model.input, layers=layers, std=std)
+    dsa_model = DSA(train=trainX, label=trainy, model=model, layers=layers, dataset_name=dataset, model_name=model_name, std=std)
+    breakpoint()
     scores = dsa_model.fit(X, y)
+    # save normalized dsa score [0,1] for deepest
+
     idx = np.argsort(scores)[::-1]
     selected_idx = idx[:budget]
     return X[selected_idx], y[selected_idx], selected_idx
@@ -620,12 +663,6 @@ def std_select(X, y, dataset_name, budget, batch_size=128, no_groups=50):
     chosen_indices = selected_indices[max_idx]
     return X[chosen_indices], y[chosen_indices], chosen_indices
 
-'''
-\textbf{Neuron Coverage (NC)} \cite{pei2017deepxplore} (coverage-based, 2017) computes the ratio of neurons in a given DNN $M$ that are activated above a self-defined threshold value by a given test suite $X_s$:  $NC(X_s) = \frac{|\{n| \forall x \in X_s, a(n,x)>t \}|}{|N|}$. $N = \{n_1, n_2,...\}$ denotes all neurons in the DNN model under test. $a(n,x)$ is the neuron activation value produced by test input $x$ on neuron $n \in N$. $t$ is the self-defined neuron activation threshold. We set $t=0.25$, which is commonly used in Deepxplore and DLFuzz. 
-
-\textbf{Standard Deviation (STD)} \cite{aghababaeyan2023black} (diversity-based, 2023) is a statistical measure of how far from the mean a group of data points is. For a test suite $X_s$, it is calculated as the norm of the standard deviation of each feature in the input set. Formally, $STD(X_s) = \Vert (\sqrt{\sum_{i=1}^{n}  \frac{V_{x_{i,j}} - \mu_j}{n}}, 1 \leq j \leq m) \Vert$, where $V_x$ is the feature matrix of the input set $X_s$ , $m$ is the number of features, $\mu_j$ is the mean value of feature $j$ in $V_x$.
-'''
-
 def update_coverage(input_data, model, model_layer_dict, threshold):
     input_data = np.array(input_data)
     # 1. 找到所有需要统计的层
@@ -657,46 +694,6 @@ def get_sample_coverage(x, model, base_layer_dict, threshold):
     update_coverage(x, model, layer_dict, threshold)
     covered = sum(layer_dict.values())
     return covered
-
-def neuron_coverage_select(X, y, model, budget, threshold=0.75, batch_size=128):
-    """
-    Select data points that maximize neuron coverage.
-
-    Args:
-        X: Input data, shape [N, ...]
-        y: Labels
-        model: Keras model
-        budget: Number of samples to select
-        threshold: Activation threshold for coverage
-        batch_size: Batch size for processing
-
-    Returns:
-        X_selected, y_selected, selected_indices
-    """
-    # 初始化覆盖表（所有神经元均未激活）
-    base_layer_dict = defaultdict(bool)
-    for layer in model.layers:
-        if 'flatten' in layer.name or 'input' in layer.name:
-            continue
-        for index in range(layer.output_shape[-1]):
-            base_layer_dict[(layer.name, index)] = False
-
-    coverage_scores = []
-    indices = []
-
-    for batch_idx, (x_batch, y_batch) in enumerate(make_batch(X, y, batch_size)):
-        for i in range(len(x_batch)):
-            x = np.expand_dims(x_batch[i], axis=0)
-            score = get_sample_coverage(x, model, base_layer_dict, threshold)
-            coverage_scores.append(score)
-            indices.append(batch_idx * batch_size + i)
-    
-    coverage_scores = np.array(coverage_scores)
-    indices = np.array(indices)
-    # 按 coverage 分数从高到低排序，选前 budget 个
-    selected_idx = indices[np.argsort(coverage_scores)[::-1][:budget]]
-    return X[selected_idx], y[selected_idx], selected_idx
-
 
 def pace(X, y, model, budget, batch_size=128, layer_idx=-2, min_cluster_size=5, min_samples=5):
     import hdbscan
@@ -909,43 +906,461 @@ def mcp_select(X, y, model, budget, batch_size=128):
     selected_idx = idx[:budget]
     return X[selected_idx], y[selected_idx], selected_idx
 
-def deepest(X, y, model, budget, batch_size=128, occurrence_prob=None):
-    """
-    DeepEST selection metric for DNN testing.
+class ActiveSet:
+    def __init__(self, N, T, occurrenceP):
+        self.testFrame = []
+        self.id = [0] * N
+        self.outcome = [False] * N
+        self.weights = [0.0] * T
+        self.occurrenceProb = list(occurrenceP)
+        self.outcomeSum = 0
+        self.outcomeSumX = 0.0
+        self.qi = 0.0
 
-    X: np.ndarray, input data
-    y: np.ndarray, labels
-    model: Keras model with .predict()
-    budget: int, number of samples to select
-    occurrence_prob: None or np.ndarray, optional, shape (n_samples,)
-        If None, uniform probability is used.
-    d: float, probability threshold for selection (between 0 and 1)
-    batch_size: int, for model prediction
+    def getOutcomeSum(self):
+        return self.outcomeSum
 
-    Returns: (X_sel, y_sel, selected_idx)
-    """
-    n_samples = X.shape[0]
-    if occurrence_prob is None:
-        occurrence_prob = np.ones(n_samples) / n_samples
+    def getOutcomeSumX(self):
+        return self.outcomeSumX
 
-    # 1. Model prediction
-    proba = []
-    for i in range(0, n_samples, batch_size):
-        proba.append(model.predict(X[i:i+batch_size]))
-    proba = np.concatenate(proba, axis=0)
+    def getWeights(self, k):
+        return self.weights[k]
 
-    # 2. 假设“失败概率”为 1 - max proba（最高的不确定性/出错可能）
-    fail_prob = 1 - np.max(proba, axis=1)
+    def activeSetUpdate(self, tF, tFnumber, y, upweights):
+        self.testFrame.append(tF)
+        self.id[len(self.testFrame) - 1] = tFnumber
+        self.outcome[len(self.testFrame) - 1] = y
 
-    # 3. DeepEST 估计分数: occurrence_prob * fail_prob
-    estimationX = occurrence_prob * fail_prob * n_samples
+        # Update weights
+        for i in range(len(self.weights)):
+            self.weights[i] += upweights[tFnumber][i]
 
-    # 4. 选择分数最高的样本
-    idx = np.argsort(estimationX)[::-1]  # 从高到低排序
-    selected_idx = idx[:budget]
-    return X[selected_idx], y[selected_idx], selected_idx
+        # Zero out weights of selected test frames
+        for i in range(len(self.testFrame)):
+            self.weights[self.id[i]] = 0.0
 
-def select(X, y, model, budget, metric, dataset, batch_size=128, **kwargs):
+        if y:
+            self.outcomeSum += 1
+            self.outcomeSumX += self.occurrenceProb[tFnumber]
+
+    def activeSetUpdateExp(self, tF, tFnumber, y, upweights):
+        self.testFrame.append(tF)
+        self.id[len(self.testFrame) - 1] = tFnumber
+
+        for i in range(len(self.weights)):
+            self.weights[i] += upweights[tFnumber][i]
+
+        for i in range(len(self.testFrame)):
+            self.weights[self.id[i]] = 0.0
+
+        if y > 0:
+            self.outcomeSumX += self.occurrenceProb[tFnumber] * y
+
+    def testFrameExtraction(self, d):
+        total_weight = sum(self.weights)
+        rand = random.random()
+        k = 0
+        cumulative_prob = self.weights[0] / total_weight if total_weight != 0 else 0
+
+        while k < len(self.weights) - 1 and rand >= cumulative_prob:
+            k += 1
+            cumulative_prob += self.weights[k] / total_weight if total_weight != 0 else 0
+
+        if total_weight != 0:
+            self.qi = d * (self.weights[k] / total_weight) + (1 - d) * (1 / (len(self.weights) - len(self.testFrame)))
+        else:
+            self.qi = 1 / (len(self.weights) - len(self.testFrame))
+
+        return k
+
+    def qiCalculation(self, d, k):
+        total_weight = sum(self.weights)
+        if total_weight != 0:
+            self.qi = d * (self.weights[k] / total_weight) + (1 - d) * (1 / (len(self.weights) - len(self.testFrame)))
+        else:
+            self.qi = 1 / (len(self.weights) - len(self.testFrame))
+
+    def printSelectedTestFrame(self):
+        print("Selected Test Frame are:", self.testFrame)
+class TestFrame:
+    def __init__(self, name, tfID, failureProb, occurrenceProb, output, fail):
+        self.name = name
+        self.tfID = tfID
+        self.failureProb = failureProb
+        self.occurrenceProb = occurrenceProb
+        self.output = output
+        self.fail = fail
+
+    def extractAndExecuteTestCase(self):
+        # Returns True if this test frame simulates a failure
+        return self.fail
+
+    def getOutput(self):
+        return self.output
+
+    def getName(self):
+        return self.name
+
+    def setName(self, name):
+        self.name = name
+
+    def getTfID(self):
+        return self.tfID
+
+    def setTfID(self, tfID):
+        self.tfID = tfID
+
+    def getFailureProb(self):
+        return self.failureProb
+
+    def setFailureProb(self, failureProb):
+        self.failureProb = failureProb
+
+    def getOccurrenceProb(self):
+        return self.occurrenceProb
+
+    def setOccurrenceProb(self, occurrenceProb):
+        self.occurrenceProb = occurrenceProb
+class DeepESTSelector:
+    def __init__(self):
+        self.numfp = 0
+        self.z = []
+        self.failedRequest = []
+
+    def getZ(self):
+        return self.z
+
+    def getnumfp(self):
+        return self.numfp
+
+    def getfailedRequest(self):
+        return self.failedRequest
+
+    def selectAndRunTestCase(self, n, testFrameList, weightsMatrix, d):
+        self.failedRequest.clear()
+        self.numfp = 0
+
+        if n > len(testFrameList) or n <= 0:
+            return [-1.0, -1.0]
+
+        if d <= 0 or d >= 1:
+            return [-2.0, -2.0]
+
+        scompl = list(range(len(testFrameList)))
+        occurrenceProb = [tf.getOccurrenceProb() for tf in testFrameList]
+
+        randomNum = random.randint(0, len(testFrameList) - 1)
+        ak = ActiveSet(n, len(testFrameList), occurrenceProb)
+
+        name = testFrameList[randomNum].getTfID()
+        esito = testFrameList[randomNum].extractAndExecuteTestCase()
+        tc = testFrameList[randomNum].getName()
+
+        ak.activeSetUpdate(name, randomNum, esito, weightsMatrix)
+        scompl.remove(randomNum)
+
+        if esito:
+            y = 1
+            self.numfp += 1
+            self.failedRequest.append(tc)
+        else:
+            y = 0
+
+        estimationX = [0] * n
+        estimationX[0] = len(testFrameList) * (occurrenceProb[randomNum] * y)
+
+        k = 1
+        while k < n:
+            weightsSum = sum(ak.getWeights(i) for i in scompl)
+
+            if weightsSum == 0:
+                prob = d + 0.1
+            else:
+                prob = random.random()
+
+            if prob <= d: # WBS
+                current_tf = ak.testFrameExtraction(d)
+            else: # random selection SRS
+                random_idx = random.randint(0, len(scompl) - 1)
+                current_tf = scompl[random_idx]
+
+            name = testFrameList[current_tf].getTfID()
+            esito = testFrameList[current_tf].extractAndExecuteTestCase()
+            tc = testFrameList[current_tf].getName()
+
+            ziX = ak.getOutcomeSumX()
+
+            if esito:
+                if prob > d:
+                    ak.qiCalculation(d, current_tf)
+                ziX += occurrenceProb[current_tf] / ak.qi
+                self.numfp += 1
+                self.failedRequest.append(tc)
+
+            ak.activeSetUpdate(name, current_tf, esito, weightsMatrix)
+
+            if prob <= d:
+                scompl.remove(current_tf)
+            else:
+                scompl.pop(random_idx)
+
+            estimationX[k] = ziX
+            k += 1
+        selected_test_suite = ak.testFrame
+        return selected_test_suite
+        #self.z = estimationX
+        #return self.estimatorBoCSP(n, estimationX)
+
+    def estimatorBoCSP(self, n, estimationX):
+        sumX = sum(estimationX)
+        mean = sumX / n
+
+        variance = sum((estimationX[i] - estimationX[0]) ** 2 for i in range(1, n)) / (n * (n - 1))
+        return [mean, variance]
+
+class TestCase:
+    string_ok = ""
+    string_not_ok = "different results"
+
+    class ExecutionState:
+        EXECUTED = "executed"
+        NOT_EXECUTED = "notExecuted"
+
+    def __init__(self, name: str, tcID: str, root_directory: Path = None):
+        self.name = name
+        self.tcID = tcID
+        self.outcome = False
+        self.execution_state = self.ExecutionState.NOT_EXECUTED
+        self.path_root_directory = root_directory or Path.cwd()
+        self.number_of_commands = 0
+        self.list_of_commands: List[str] = []
+        self.inputs: List[Any] = []
+        self.max_number_of_inputs = 0
+        self.expected_occurrence_probability = 0.0
+        self.real_occurrence_probability = 0.0
+        self.expected_failure_likelihood = 0.0
+
+    def __eq__(self, other):
+        if not isinstance(other, TestCase):
+            return False
+        return self.tcID == other.tcID
+
+    def __hash__(self):
+        return hash(self.name)
+
+    def run_test_case_dummy(self, string: str) -> bool:
+        """Simulates execution."""
+        self.outcome = self.get_outcome()
+        self.execution_state = self.ExecutionState.EXECUTED
+        return self.outcome
+
+    def run_test_case(self) -> bool:
+        """Actually runs the shell script and checks output."""
+        script_path = self._create_temp_script()
+
+        print(f"\n\n***** Running Test {self.name}. ******\nExecuted Temporary Script: {script_path}")
+        try:
+            result = subprocess.run(
+                [script_path],
+                cwd=self.path_root_directory,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                shell=False
+            )
+            stdout = result.stdout.strip()
+            stderr = result.stderr.strip()
+
+            print(f"\n'Standard Output' Printed by the test case execution {self.name}: {stdout}")
+            if result.returncode != 0:
+                print(f"\n'Standard Error' Printed by the test case execution {self.name}: {stderr}")
+                print(f"Execution State: {result.returncode}")
+                self.execution_state = self.ExecutionState.NOT_EXECUTED
+            else:
+                self.execution_state = self.ExecutionState.EXECUTED
+
+            if stdout == self.string_not_ok:
+                self.outcome = False
+            elif stdout == self.string_ok:
+                self.outcome = True
+
+        finally:
+            script_path.unlink()  # delete the temp script
+
+        print(f"\n ** Test {self.name} terminated **\n")
+        return self.outcome
+
+    def _create_temp_script(self) -> Path:
+        """Create a temporary bash script with the list of commands."""
+        fd, path = tempfile.mkstemp(suffix=".sh", dir=self.path_root_directory)
+        script_path = Path(path)
+        script_path.chmod(0o755)
+
+        with open(script_path, 'w', encoding='utf-8') as f:
+            f.write("#!/bin/bash\n")
+            for cmd in self.list_of_commands:
+                f.write(cmd + "\n")
+
+        return script_path
+
+    # --- Getter / Setter properties ---
+
+    def get_name(self):
+        return self.name
+
+    def set_name(self, name: str):
+        self.name = name
+
+    def get_number(self):
+        return self.tcID
+
+    def set_number(self, number: str):
+        self.tcID = number
+
+    def get_number_of_commands(self):
+        return self.number_of_commands
+
+    def set_number_of_commands(self, num: int):
+        self.number_of_commands = num
+
+    def get_list_of_commands(self):
+        return self.list_of_commands
+
+    def set_list_of_commands(self, cmds: List[str]):
+        self.list_of_commands = cmds
+
+    def get_expected_occurrence_probability(self):
+        return self.expected_occurrence_probability
+
+    def set_expected_occurrence_probability(self, value: float):
+        self.expected_occurrence_probability = value
+
+    def get_real_occurrence_probability(self):
+        return self.real_occurrence_probability
+
+    def set_real_occurrence_probability(self, value: float):
+        self.real_occurrence_probability = value
+
+    def set_outcome(self, outcome: bool):
+        self.outcome = outcome
+
+    def get_outcome(self) -> bool:
+        return self.outcome
+
+    def get_inputs(self):
+        return self.inputs
+
+    def set_inputs(self, inputs: List[Any]):
+        self.inputs = inputs
+
+    def get_max_number_of_inputs(self):
+        return self.max_number_of_inputs
+
+    def set_max_number_of_inputs(self, value: int):
+        self.max_number_of_inputs = value
+
+    def get_tcID(self):
+        return self.tcID
+
+    def set_tcID(self, tcID: str):
+        self.tcID = tcID
+
+    def get_execution_state(self):
+        return self.execution_state
+
+    def set_execution_state(self, state: str):
+        self.execution_state = state
+
+class InitializerTF:
+    def __init__(self, path: str):
+        self.csv_file = path
+
+    def readTestFrames(self, key: int, size: int) -> List[TestFrame]:
+        test_frames = []
+        try:
+            with open(self.csv_file, 'r', encoding='utf-8') as f:
+                header = next(f)  # Skip header
+                occ = 1.0 / size  # Uniform occurrence probability
+
+                for i, line in enumerate(f):
+                    parts = line.strip().split(",")
+                    outcome = parts[1]
+                    fail = outcome != "Pass"
+                    val = float(parts[key])
+
+                    if key in [3, 6]:  # invert confidence and combo
+                        val = 1.0 - val
+                        # optional epsilon:
+                        # if val == 0.0:
+                        #     val = 1e-9
+
+                    tf = TestFrame(
+                        name=str(len(test_frames)),
+                        tfID=str(len(test_frames)),
+                        failureProb=val,
+                        occurrenceProb=occ,
+                        output=parts[2],
+                        fail=fail
+                    )
+                    test_frames.append(tf)
+
+                if i + 1 != size:
+                    print("[WARNING] The size is lower/greater!!!")
+
+        except FileNotFoundError as e:
+            print(f"[ERROR] File not found: {e}")
+        except Exception as e:
+            print(f"[ERROR] {e}")
+
+        return test_frames
+
+    def weightedMatrixComputation_threshold(self, tf: List[TestFrame], key: int, threshold: float) -> List[List[float]]:
+        size = len(tf)
+        wm = [[0.0 for _ in range(size)] for _ in range(size)]
+
+        for i in range(size):
+            for j in range(size):
+                conf_j = tf[j].getFailureProb()
+                if conf_j > threshold:
+                    wm[i][j] = conf_j
+                else:
+                    wm[i][j] = 0.0
+
+        return wm
+
+def deepest(testX, testy, dataset, model_name, budget, aux_variable='combo', threshold=0.7):
+    dataset_path = f'./AllResult/DeepEST/{model_name}_{dataset}.csv'
+    # Determine feature key and adjust threshold
+    if aux_variable == "confidence":
+        key = 3
+        threshold = 1 - threshold
+    elif aux_variable == "dsa":
+        key = 4
+    elif aux_variable == "lsa":
+        key = 5
+    else:  # combo or others
+        key = 6
+        threshold = 1 - threshold
+    print(f"Approach execution on {dataset_path} with auxiliary variable {aux_variable} and budget {budget}")
+
+    rep = 1 #30
+    csv_reader = InitializerTF(dataset_path)
+    test_frames = csv_reader.readTestFrames(key, 10000)
+
+    aws = DeepESTSelector()
+    weights_matrix = csv_reader.weightedMatrixComputation_threshold(test_frames, key, threshold)
+    #rel_arr = []
+    #num_fp = []
+    #for i in range(rep):
+        #rel_arr.append(1 - rel[0])
+        #num_fp.append(aws.getnumfp())
+    selected_idx = aws.selectAndRunTestCase(budget, test_frames, weights_matrix, 0.8)
+    selected_idx = np.array(selected_idx).astype(np.int32)
+    return testX[selected_idx], testy[selected_idx], selected_idx
+    #for i in range(rep):
+    #    print(f"Repetition {i+1}) Estimated Accuracy: {rel_arr[i]:.4f} | Number of failed tests: {num_fp[i]}")
+
+def select(trainX, trainy, X, y, model, budget, metric, dataset, model_name, batch_size=128, **kwargs):
     if metric == 'rnd':
         return random_select(X, y, budget)
     elif metric == 'ent':
@@ -959,9 +1374,9 @@ def select(X, y, model, budget, metric, dataset, batch_size=128, **kwargs):
     elif metric == 'nac':
         return nac_select(X, y, model, budget, t=kwargs.get('t', 0.75))
     elif metric == 'lsa':
-        return lsa_select(X, y, model, budget, std=kwargs.get('std', 0.05))
+        return lsa_select(trainX, trainy, X, y, model, budget, dataset, model_name, std=kwargs.get('std', 0.05))
     elif metric == 'dsa':
-        return dsa_select(X, y, model, budget, std=kwargs.get('std', 0.05))
+        return dsa_select(trainX, trainy, X, y, model, budget, dataset, model_name, std=kwargs.get('std', 0.05))
     elif metric == 'gd':
         return geometric_diversity_select(X, y, dataset, budget, batch_size, no_groups=kwargs.get('no_groups', 50))
     #elif metric == 'nc':
@@ -977,6 +1392,6 @@ def select(X, y, model, budget, metric, dataset, batch_size=128, **kwargs):
     elif metric == 'mcp':
         return mcp_select(X, y, model, budget, batch_size=batch_size)
     elif metric == 'est':
-        return deepest(X, y, model, budget, batch_size=batch_size, occurrence_prob=kwargs.get('occurrence_prob', None))
+        return deepest(X, y, dataset, model_name, budget)
     else:
         raise NotImplementedError(f"Metric '{metric}' is not implemented.")
