@@ -196,6 +196,7 @@ def create_corrupted_mnist():
     np.save(os.path.join(basedir, 'data/corrupted_image/corrupted_clean_mnist_image.npy'), X_combined)
     np.save(os.path.join(basedir, 'data/corrupted_image/corrupted_clean_mnist_label.npy'), y_combined)
 
+
 def create_adv_mnist():
     epsilon = 0.3
     alpha = epsilon / 10  # Step size for iterative attacks
